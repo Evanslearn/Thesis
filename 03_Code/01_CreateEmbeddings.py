@@ -230,7 +230,6 @@ def step5_KNN(embeddings, labels):
     print(classification_report(y_test, y_pred))
 step5_KNN(time_series_embeddings, labels)
 
-
 def step6_VisualizeFinal():
     # Step 10: Optional Visualization (PCA to reduce embeddings to 2D)
     pca = PCA(n_components=2)
@@ -243,3 +242,17 @@ def step6_VisualizeFinal():
     plt.pause(0.001)
     plt.show()
 step6_VisualizeFinal()
+
+import time
+from datetime import datetime
+def step7_SaveEmbeddingsToOutput(embeddings):
+    formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    df = pd.DataFrame(embeddings)
+    filename = abspath + "Embeddings" + "_" + formatted_datetime + ".csv"
+
+    # Writing to CSV with pandas (which is generally faster)
+    df.to_csv(filename, index=False, header=False)
+    pass;
+
+step7_SaveEmbeddingsToOutput(time_series_embeddings)

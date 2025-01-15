@@ -1,3 +1,4 @@
+import time
 import torch
 from torchvision.io import decode_image
 from torchvision.models import resnet50, ResNet50_Weights
@@ -57,13 +58,17 @@ if isinstance(labels, np.ndarray):
 
 # Example training loop
 model.train()
-for epoch in range(1):  # Replace with the number of epochs you want
+for epoch in range(30):  # Replace with the number of epochs you want
+    start_time = time.time()  # Start timer
     optimizer.zero_grad()
     outputs = model(features)  # Assuming `features` is your training data
     loss = criterion(outputs, labels)  # Assuming `labels` are your true labels
     loss.backward()
     optimizer.step()
-    print(f"Epoch {epoch+1}, Loss: {loss.item()}")
+    end_time = time.time()  # End timer
+
+    epoch_time = end_time - start_time  # Calculate epoch time
+    print(f"Epoch {epoch+1}, Loss: {loss.item()}, Time: {epoch_time:.2f} seconds")
 
 
 # Assuming you have a list of your class names

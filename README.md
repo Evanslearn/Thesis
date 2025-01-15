@@ -7,4 +7,12 @@
 ## 2025/01/16
 * Realized that I need to do it like this: k-Means -> kNN -> SkipGram, so my current implementation is not correct.
 * I have extracted some embeddings with this "wrong implementation", to use in a pre-trained NN.
-* Created a file 02, which attempts to use a pretrained model from embeddings created from file 01 (used ResNet 50, but got 51.2% probability of being Control for all 54 samples - in 10 epochs training)
+* Created a file 02, which attempts to use a pretrained model from embeddings created from file 01. Used ResNet 50, and got
+  * 51.2% probability of being Control for all 54 samples - in 10 epochs training
+  * 97.5% probability of being Dementia for all 54 samples - in 30 epochs training
+ 
+# TO DO:
+* Fix 01 logic
+* Make train(-val)-test split
+* Sliding window in 01 instead of 1 row - 1 sample
+* Try other pre-trained networks

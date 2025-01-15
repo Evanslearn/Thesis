@@ -9,7 +9,7 @@
 * I have extracted some embeddings with this "wrong implementation", to use in a pre-trained NN.
 * Created a file 02, which attempts to use a pretrained model from embeddings created from file 01. Used ResNet 50, and got
   * 51.2% probability of being Control for all 54 samples - in 10 epochs training
-  * 97.5% probability of being Dementia for all 54 samples - in 30 epochs training
+  * 97.4% probability of being Dementia for all 54 samples - in 30 epochs training
  
 # TO DO:
 * Fix 01 logic

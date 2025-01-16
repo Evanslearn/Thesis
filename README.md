@@ -11,6 +11,9 @@
   * 51.2% probability of being Control for all 54 samples - in 10 epochs training
   * 97.4% probability of being Dementia for all 54 samples - in 30 epochs training
  
+ ## 2025/01/17
+ * created another Code 01 file, in an attempt to make the logic of creating the embeddings correctly. Not finished and/or working yet
+ 
 # TO DO:
 * Fix 01 logic
 * Make train(-val)-test split

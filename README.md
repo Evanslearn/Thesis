@@ -2,7 +2,8 @@
 
 ## 2025/01/15:
 * Tried to recreate the Signal2Vec logic. Did k-Means -> SkipGram -> kNN
-* ![image](https://github.com/user-attachments/assets/1f3c1216-c04e-4e08-ac8a-5cca9e4d1d1f| width = 300)
+* <img src="https://github.com/user-attachments/assets/1f3c1216-c04e-4e08-ac8a-5cca9e4d1d1f" width="200">
+
 
 ## 2025/01/16
 * Realized that I need to do it like this: k-Means -> kNN -> SkipGram, so my current implementation is not correct.

@@ -17,7 +17,7 @@
 
 * ## 2025/01/19
 * Tried some more models for the created embeddings, as it troubled me that I initially used a pretrained CNN (and CNN for embeddings from time-series sounds strange...). The model is still problematic, as it's not learning, and does the same for each epch.
-* * <img src="https://github.com/user-attachments/assets/e9b59a2a-d37e-4ca4-b259-f2aa803f8516)" width="600">
+* * <img src="https://github.com/user-attachments/assets/e9b59a2a-d37e-4ca4-b259-f2aa803f8516" width="600">
 
  
 # TO DO:

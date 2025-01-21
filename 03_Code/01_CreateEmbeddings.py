@@ -7,14 +7,39 @@ import pandas as pd
 
 abspath = "/home/vang/Downloads/"
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
+filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
 totalpath_data = abspath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 totalpath_labels = abspath + filepath_labels
 initial_labels = pd.read_csv(totalpath_labels, header=None)[:][0]
-labels = initial_labels.map({'C': 0, 'D': 1}).to_numpy()
+print(type(initial_labels))
+filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
+totalpath_labels = abspath + filepath_labels
+initial_labels = pd.read_csv(totalpath_labels, header=None)
+if type(initial_labels) != type(pd.Series):
+    initial_labels = initial_labels.iloc[:, 0] # convert to series
+print(type(initial_labels))
+
+
+# Drop NaN rows from data
+data = data.dropna()
+
+# Reset indices after dropping rows
+data = data.reset_index(drop=True)
+
+# Ensure labels align with the updated data
+labels = initial_labels[data.index]
+labels = labels.reset_index(drop=True)
+
+
+
+labels = labels.map({'C': 0, 'D': 1}).to_numpy()
 print(labels)
+
+
+
 
 def step1_normalization(normFlag):
     if normFlag == "initial":
@@ -165,7 +190,7 @@ def step3b_KMeansPlot(labels, centroids, kmeans):
 
 # STEP 4: Apply Skip-gram Model (Training Embeddings)
 from gensim.models import Word2Vec
-def step4_NGRAM(cluster_labels):
+def step4_NGRAM(cluster_labels, vector_size):
     flagnGRAM = "NO"
     # Convert all labels to strings
     cluster_labels = [str(label) for label in cluster_labels]
@@ -188,7 +213,7 @@ def step4_NGRAM(cluster_labels):
 
 
     # Train Word2Vec Model (Skip-Gram)
-    model = Word2Vec(sentences=context_pairs, vector_size=100, window=5, sg=1, min_count=1)
+    model = Word2Vec(sentences=context_pairs, vector_size=vector_size, window=5, sg=1, min_count=1)
 
     if flagnGRAM == "CLUSTER":
         # Obtain Embeddings for All Segments
@@ -199,7 +224,7 @@ def step4_NGRAM(cluster_labels):
         embeddings = np.array([model.wv[label] for label in unique_labels])
 
     return embeddings, model
-embeddings, model_NGRAM = step4_NGRAM(cluster_labels)
+embeddings, model_NGRAM = step4_NGRAM(cluster_labels, vector_size=data.shape[1])
 #print(embeddings)
 print(type(embeddings))
 print(embeddings.shape)
@@ -212,7 +237,7 @@ print(embeddings.shape)
 time_series_embeddings = np.array([embeddings[label] for label in cluster_labels])
 
 # Now, time_series_embeddings will have shape (54, 100)
-print(time_series_embeddings.shape)  # Output: (54, 100)
+print(f"TS embeddings.shape = {time_series_embeddings.shape}")  # Output: (54, 100)
 
 
 def step5_KNN(embeddings, labels):
@@ -253,6 +278,11 @@ def step7_SaveEmbeddingsToOutput(embeddings):
 
     # Writing to CSV with pandas (which is generally faster)
     df.to_csv(filename, index=False, header=False)
+
+
+    df_labels = pd.DataFrame(labels)
+    filename = abspath + "Labels" + "_" + formatted_datetime + ".csv"
+    df_labels.to_csv(filename, index=False, header=False)
     pass;
 
 step7_SaveEmbeddingsToOutput(time_series_embeddings)

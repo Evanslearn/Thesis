@@ -13,16 +13,23 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
 
 
 abspath = "/home/vang/Downloads/"
-filepath_data = "Embeddings_2025-01-15_23-11-50.csv"
+filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
+filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
 totalpath_data = abspath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 print(data.shape)
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
+filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 totalpath_labels = abspath + filepath_labels
-initial_labels = pd.read_csv(totalpath_labels, header=None)[:][0]
-labels = initial_labels.map({'C': 0, 'D': 1}).to_numpy()
+initial_labels = pd.read_csv(totalpath_labels, header=None)
+print(type(initial_labels))
+print(initial_labels)
+if type(initial_labels) != type(pd.Series):
+    initial_labels = initial_labels.iloc[:, 0] # convert to series
+
+labels = initial_labels.to_numpy()
 print(labels)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 

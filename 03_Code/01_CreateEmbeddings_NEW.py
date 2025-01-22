@@ -45,22 +45,50 @@ def tokenize_new_data(knn, new_data):
     return knn.predict(new_data)
 
 
+def returnData(abspath, filepath_data):
+    totalpath_data = abspath + filepath_data
+    data = pd.read_csv(totalpath_data, header=None)
+    return data
+
+def returnLabels(abspath, filepath_labels):
+    totalpath_labels = abspath + filepath_labels
+
+    # This was needed when labels were the first column of my csv
+  #  labels = pd.read_csv(totalpath_labels, header=None)[:][0]
+
+    labels = pd.read_csv(totalpath_labels, header=None)
+    if type(labels) != type(pd.Series):
+        labels = labels.iloc[:, 0]  # convert to series
+    print(type(labels))
+
+    return labels
+
+def makeLabelsInt(labels):
+    # print(labels)
+    return labels.map({'C': 0, 'D': 1}).to_numpy()
+
+
+
 # Example Usage
 if __name__ == "__main__":
     abspath = "/home/vang/Downloads/"
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
-    totalpath_data = abspath + filepath_data
+    filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
+    data = returnData(abspath, filepath_data)
+
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
-    totalpath_labels = abspath + filepath_labels
+    filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
+    initial_labels = returnLabels(abspath, filepath_labels)
 
-    data = pd.read_csv(totalpath_data, header=None)
-    data = data.to_numpy()  # Convert pandas DataFrame to numpy array if it's not already
- #   print(data)
-  #  print(data.shape)  # Should be (num_samples, num_features)
+    # Drop NaN rows from data
+    data = data.dropna()
+    # Reset indices after dropping rows
+    data = data.reset_index(drop=True)
+    # Ensure labels align with the updated data
+    labels = initial_labels[data.index]
+    labels = labels.reset_index(drop=True)
 
-    initial_labels = pd.read_csv(totalpath_labels, header=None)[:][0]
-    labels = initial_labels.map({'C': 0, 'D': 1}).to_numpy()
-    print(labels)
+    labels = makeLabelsInt(labels)
 
     n_clusters_min = 40 # Was initially 2
     n_clusters_max = 50 # Was initially 10
@@ -68,7 +96,7 @@ if __name__ == "__main__":
     range_n_clusters = range(n_clusters_min, n_clusters_max)  # Desirable range
 
     # Train the tokenizer
-    knn_neighbors = 10
+    knn_neighbors = 50
     kmeans_model, knn_model, tokens = train_tokenizer(data, range_n_clusters, knn_neighbors = knn_neighbors)
 
  #   corpus = [knn_model.predict(ts.reshape(1, -1))[0] for ts in data]
@@ -102,7 +130,7 @@ if __name__ == "__main__":
 
 
 
-    window_size = 2  # Define the window size for context
+    window_size = 20  # Define the window size for context
     target_context_pairs = []
 
     for i in range(window_size, len(corpus) - window_size):
@@ -182,12 +210,116 @@ if __name__ == "__main__":
 
 
     # Parameters
-    vocab_size = 10  # Set vocabulary size based on your tokens
+    vocab_size = n_clusters_max # Set vocabulary size based on your tokens
     embedding_dim = 50
-    window_size = 2
+    window_size = 20
     epochs = 10
 
     # Train skip-gram model
     model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size, epochs)
-
     print("Skip-gram model trained!")
+
+    import numpy as np
+
+
+    def get_all_embeddings(model, sequences):
+        """
+        Get embeddings for all tokens in all sequences using the trained skip-gram model.
+
+        Parameters:
+        - model: Trained skip-gram model.
+        - sequences: List of sequences, where each sequence is a list of tokens (integers).
+
+        Returns:
+        - all_embeddings: A dictionary where keys are tokens and values are their embeddings.
+        """
+        # Extract the weights of the embedding layer
+        embedding_layer = model.layers[0]  # The first layer is the embedding layer
+        embeddings = embedding_layer.get_weights()[0]  # Get the embedding matrix
+
+        # Map each token to its embedding
+        all_embeddings = {token: embeddings[token] for sequence in sequences for token in sequence}
+
+        return all_embeddings
+
+
+    # Assume `sequences` is your input data and `model` is the trained skip-gram model
+    time_series_embeddings = get_all_embeddings(model, sequences)
+
+    # Print embeddings for all tokens
+    for token, embedding in time_series_embeddings.items():
+        print(f"Token {token}: Embedding {embedding}")
+
+
+    def get_sequence_embeddings(sequences, model):
+        """
+        Given a list of sequences, get the average embedding for each sequence
+        by averaging the embeddings of its tokens.
+        """
+        # Initialize an empty list to store the sequence embeddings
+        sequence_embeddings = []
+
+        for sequence in sequences:
+            # Get embeddings for each token in the sequence
+            embeddings = np.array([model.layers[0].get_weights()[0][token] for token in sequence])
+
+            # Compute the average embedding for the sequence
+            sequence_embedding = np.mean(embeddings, axis=0)
+
+            # Append the average embedding to the list
+            sequence_embeddings.append(sequence_embedding)
+
+        # Convert the list of sequence embeddings into a NumPy array
+        return np.array(sequence_embeddings)
+
+
+    # Function to get embeddings for each sequence directly
+    def get_sequence_embedding(token_sequence, model):
+        """
+        Given a sequence of tokens, get the embedding for the entire sequence by averaging the embeddings
+        of all tokens in the sequence.
+        """
+        embeddings = []
+
+        # Get embedding for each token in the sequence
+        for token in token_sequence:
+            # Get the embedding for the token from the embedding layer
+            token_embedding = model.layers[0].get_weights()[0][token]  # Embedding layer's weights
+            embeddings.append(token_embedding)
+
+        # Convert to a numpy array and calculate the mean across all tokens in the sequence
+        embeddings = np.array(embeddings)
+        sequence_embedding = np.mean(embeddings, axis=0)
+
+        return sequence_embedding
+
+    # Now get the embeddings for each sequence
+ #   time_series_embeddings = get_sequence_embedding(token_sequence, model)
+    # Assuming 'model' is the trained skipgram model
+    # Get embeddings for all sequences
+    time_series_embeddings = np.array([get_sequence_embedding(seq, model) for seq in sequences])
+
+    print(f"Shape of sequences: {len(sequences)}")
+    # Show the result
+    print(f"Shape of sequence embedding: {time_series_embeddings.shape}")
+    print(f"Sequence embedding:\n{time_series_embeddings}")
+
+
+    import time
+    from datetime import datetime
+    def SaveEmbeddingsToOutput(embeddings):
+        formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        df = pd.DataFrame(embeddings)
+        filename = abspath + "Embeddings" + "_" + formatted_datetime + ".csv"
+
+        # Writing to CSV with pandas (which is generally faster)
+        df.to_csv(filename, index=False, header=False)
+
+        df_labels = pd.DataFrame(labels)
+        filename = abspath + "Labels" + "_" + formatted_datetime + ".csv"
+        df_labels.to_csv(filename, index=False, header=False)
+        pass;
+
+
+    SaveEmbeddingsToOutput(time_series_embeddings)

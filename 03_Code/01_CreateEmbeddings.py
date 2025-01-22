@@ -5,40 +5,47 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 
+def returnData(abspath, filepath_data):
+    totalpath_data = abspath + filepath_data
+    data = pd.read_csv(totalpath_data, header=None)
+    return data
+
+def returnLabels(abspath, filepath_labels):
+    totalpath_labels = abspath + filepath_labels
+
+    # This was needed when labels were the first column of my csv
+  #  labels = pd.read_csv(totalpath_labels, header=None)[:][0]
+
+    labels = pd.read_csv(totalpath_labels, header=None)
+    if type(labels) != type(pd.Series):
+        labels = labels.iloc[:, 0]  # convert to series
+    print(type(labels))
+
+    return labels
+
+def makeLabelsInt(labels):
+    # print(labels)
+    return labels.map({'C': 0, 'D': 1}).to_numpy()
+
+
 abspath = "/home/vang/Downloads/"
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
-totalpath_data = abspath + filepath_data
-data = pd.read_csv(totalpath_data, header=None)
+data = returnData(abspath, filepath_data)
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
-totalpath_labels = abspath + filepath_labels
-initial_labels = pd.read_csv(totalpath_labels, header=None)[:][0]
-print(type(initial_labels))
 filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
-totalpath_labels = abspath + filepath_labels
-initial_labels = pd.read_csv(totalpath_labels, header=None)
-if type(initial_labels) != type(pd.Series):
-    initial_labels = initial_labels.iloc[:, 0] # convert to series
-print(type(initial_labels))
-
+initial_labels = returnLabels(abspath, filepath_labels)
 
 # Drop NaN rows from data
 data = data.dropna()
-
 # Reset indices after dropping rows
 data = data.reset_index(drop=True)
-
 # Ensure labels align with the updated data
 labels = initial_labels[data.index]
 labels = labels.reset_index(drop=True)
 
-
-
-labels = labels.map({'C': 0, 'D': 1}).to_numpy()
-print(labels)
-
-
+labels = makeLabelsInt(labels)
 
 
 def step1_normalization(normFlag):

@@ -26,3 +26,9 @@
 * 01 logic should be ok now? At least it gave the expected dimension in output, and logic is K-Means -> kNN - > Skipgram, and output shape is (number of rows) x (number of features we want)
 * Something is wrong with the classifier, as it's giving unstable results, where accuracy is usually oscillating, and predicted values are really similar for different instances that could have different labels.
 * * <img src="https://github.com/user-attachments/assets/7cf908ab-2950-417c-aa9e-01b8a221f44f" width="600">
+
+# TO DO
+* Experiment with sampling of the mp3 files?
+* Experiment with windowing, and maybe use a larger window that 5 that I have used?
+* Experiment with Embedding feature count?
+* Experiment with classifier (NN architecture, hyperparameters) ?

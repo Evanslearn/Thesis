@@ -2,6 +2,7 @@ import time
 import torch
 import torch.optim as optim
 import torchvision
+from keras.optimizers import SGD
 from pyparsing import pyparsing_test
 from torchvision.models import resnet50, ResNet50_Weights, list_models, densenet201, DenseNet201_Weights
 import torch.nn as nn
@@ -16,12 +17,14 @@ abspath = "/home/vang/Downloads/"
 filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
+filepath_data = "Embeddings_Pitt_2025-01-26_23-29-29.csv"
 totalpath_data = abspath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 print(data.shape)
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
+filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
 totalpath_labels = abspath + filepath_labels
 initial_labels = pd.read_csv(totalpath_labels, header=None)
 print(type(initial_labels))
@@ -179,6 +182,7 @@ def model02_Densenet201(data, labels):
 
 
 import time
+import random
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -212,7 +216,7 @@ def model03_VangRNN(data, labels):
     X_data = np.array(data); Y_targets = np.array(labels)
     print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-    random_state = 42
+    random_state = 0
     test_ratio = 0.2
     X_train_val, X_test, Y_train_val, Y_test = train_test_split(X_data, Y_targets, test_size=test_ratio,
                                                                 random_state=random_state)#, stratify=Y_targets)
@@ -277,7 +281,7 @@ def model03_VangRNN(data, labels):
     loss = 'binary_crossentropy'#'mae'
     metrics = ['mse', 'accuracy']
     batch_size = 32
-    epochs = 20
+    epochs = 30
 
     units_simple = [32, 32]
     units_lstm = 32
@@ -349,23 +353,29 @@ def model03_VangRNN(data, labels):
         for i in range(0, DENSE_layers):
           model.add(tf.keras.layers.Dense(neurons_dense, activation=activation_dense))
 
-    model.add(tf.keras.layers.Dense(1))  # Assuming you are predicting this number of values (e.g 9)
-
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))  # Sigmoid activation for binary classification
 
     start_time = time.perf_counter() # Get current time at start
 
     # Compile the model
-    learning_rate = 0.0001
-    model.compile(optimizer=Adam(learning_rate=learning_rate), loss=loss, metrics=metrics)
+    learning_rate = 0.1
+    momentum = 0.9
+    optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
+  #  optimizer = Adam(learning_rate=learning_rate)
+    model.compile(
+        optimizer=optimizer,
+        loss=loss,
+        metrics=metrics
+    )
 
     # Summary of the model
     model.summary()
 
 #    X_train_normalized = X_train; Y_train_normalized = Y_train; X_val_normalized = X_val; Y_val_normalized = Y_val
     print("NO NEED TO SCALE Y, SO OVERRIDING THE VALUES")
-    print(Y_train, Y_val, Y_test)
+ #   print(Y_train, Y_val, Y_test)
     Y_train_normalized = Y_train; Y_val_normalized = Y_val; Y_test_normalized = Y_test;
-    print(Y_train, Y_val, Y_test)
+ #   print(Y_train, Y_val, Y_test)
     # Train the model
     history = model.fit(X_train_normalized, Y_train_normalized, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val_normalized))
     # batch size of 1 (i.e., updating the model's weights after every single sample)
@@ -385,9 +395,9 @@ def model03_VangRNN(data, labels):
     print(f'predictions = {predictions.T}')
     print(f'actual lables = {Y_test_normalized}')
 
-#    rand_index_pred = 5
- #   for i in range(rand_index_pred, rand_index_pred + 5):
-    for i in range(0, Y_test_normalized.shape[0]):
+    rand_index_pred = 5
+    random_numbers = [random.randint(0, Y_test_normalized.shape[0]) for _ in range(5)]
+    for i in random_numbers:
         print(f'\nFor i = {i}, we have:')
         print(f'Y_predictions[i]     = {predictions[i]}')
         print(f'Y_test_normalized[i] = {Y_test_normalized[i]}')
@@ -403,28 +413,35 @@ def model03_VangRNN(data, labels):
     print(f'\nWith formula MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
     print(Y_test)
 
+    plotTrainValAccuracy(history)
+
+
+def plotTrainValAccuracy(history):
+    # Access accuracy and validation accuracy from the history
+    training_accuracy = history.history['accuracy']
+    validation_accuracy = history.history['val_accuracy']
+
+    # Plot the training and validation accuracy
+    plt.figure(figsize=(8, 6))
+
+    # Get the number of epochs from the length of the accuracy history
+    epochs = len(history.history['accuracy'])
+    # Plotting both training and validation accuracy
+    plt.plot(range(1, epochs + 1), training_accuracy, label='Training Accuracy', color='blue', marker='o')
+    plt.plot(range(1, epochs + 1), validation_accuracy, label='Validation Accuracy', color='orange', marker='o')
+
+    # Adding labels and title
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    # Show the plot
+    plt.grid(True)
+    plt.show()
+
 
 
 #modelResnet50 = model01_Resnet50(data, labels)
 #modelDensenet01 = model02_Densenet201(data, labels)
 modelVangRNN = model03_VangRNN(data, labels)
-
-
-
-
-
-
-
-def oldSteps():
-    # Step 2: Initialize the inference transforms
-    preprocess = weights.transforms()
-
-    # Step 3: Apply inference preprocessing transforms
-    batch = preprocess(img).unsqueeze(0)
-
-    # Step 4: Use the model and print the predicted category
-    prediction = model(batch).squeeze(0).softmax(0)
-    class_id = prediction.argmax().item()
-    score = prediction[class_id].item()
-    category_name = weights.meta["categories"][class_id]
-    print(f"{category_name}: {100 * score:.1f}%")

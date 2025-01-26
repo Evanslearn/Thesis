@@ -22,8 +22,9 @@
 ## 2025/01/20
 * Also tried timeseries from Pitt, and embedding with the wrong code. Results still not good, so need to fix signal2vec code
 
- 
-# TO DO:
-* Fix 01 logic
-* Make train(-val)-test split
-* Sliding window in 01 instead of 1 row - 1 sample
+## 2025/01/26
+* 01 logic should be ok now? At least it gave the expected dimension in output, and logic is K-Means -> kNN - > Skipgram, and output shape is (number of rows) x (number of features we want)
+* Something is wrong with the classifier, as it's giving unstable results, where accuracy is usually oscillating, and predicted values are really similar for different instances that could have different labels.
+* * <img src="https://github.com/user-attachments/assets/e9b59a2a-d37e-4ca4-b259-f2aa803f8516" width="600">
+
+![alt text](image.png)

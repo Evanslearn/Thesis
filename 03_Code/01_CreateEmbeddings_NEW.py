@@ -80,6 +80,9 @@ if __name__ == "__main__":
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
     initial_labels = returnLabels(abspath, filepath_labels)
 
+    print(f"----- BEFORE DROPPING NA -----")
+    print(f"Labels shape is = {initial_labels.shape}")
+    print(f"Data shape is = {data.shape}")
     # Drop NaN rows from data
     data = data.dropna()
     # Reset indices after dropping rows
@@ -89,6 +92,9 @@ if __name__ == "__main__":
     labels = labels.reset_index(drop=True)
 
     labels = makeLabelsInt(labels)
+    print(f"----- AFTER DROPPING NA -----")
+    print(f"Labels shape is = {labels.shape}")
+    print(f"Data shape is = {data.shape}")
 
     n_clusters_min = 40 # Was initially 2
     n_clusters_max = 50 # Was initially 10
@@ -110,40 +116,29 @@ if __name__ == "__main__":
     token_sequence = [token for token in corpus]
     print(f"Token Sequence: {token_sequence[:50]}")
 
+    window_size = 5  # Length of each sequence
+    stride = 1  # Step size to slide the window (1 ensures maximum overlap)
 
-    # Reshaping the array into 10 sequences of 5 elements each
-    sequences = [token_sequence[i:i + 5] for i in range(0, len(token_sequence), 5)]
-
+    sequences = [token_sequence[i:i + window_size]
+                 for i in range(0, len(token_sequence) - window_size + 1, stride)]
+    print(f"Number of overlapping sequences: {len(sequences)}")
     # Print the sequences
     print(sequences)
 
 
 
+    def notSureWhatThisis():
+        window_size = 20  # Define the window size for context
+        target_context_pairs = []
 
-    # Generate the corpus
-  #  corpus = [knn_model.predict(ts.reshape(1, -1)).tolist() for ts in data]
- #   print(f"Corpus: {corpus[:5]}")  # Display first 5 sequences
- #   print(corpus)
+        for i in range(window_size, len(corpus) - window_size):
+            target = corpus[i]
+            context = corpus[i - window_size:i] + corpus[i + 1:i + window_size + 1]
+            for ctx in context:
+                target_context_pairs.append((target, ctx))
 
- #   token_sequence = [token[0] for token in corpus]
-#    print(f"Token Sequence: {token_sequence}")
-
-
-
-    window_size = 20  # Define the window size for context
-    target_context_pairs = []
-
-    for i in range(window_size, len(corpus) - window_size):
-        target = corpus[i]
-        context = corpus[i - window_size:i] + corpus[i + 1:i + window_size + 1]
-        for ctx in context:
-            target_context_pairs.append((target, ctx))
-
-    print(f"Generated target-context pairs: {target_context_pairs[:5]}")
-
-
-
-
+        print(f"Generated target-context pairs: {target_context_pairs[:5]}")
+        return;
 
 
 
@@ -154,14 +149,19 @@ if __name__ == "__main__":
     from tensorflow.keras.preprocessing.sequence import skipgrams
     from tensorflow.keras.preprocessing.text import Tokenizer
 
-    def create_skipgram_pairs(sequence, vocab_size, window_size=2):
+    def create_skipgram_pairs(sequence, vocab_size, window_size=2, negative_samples=5):
         """
         Generate skip-gram pairs using TensorFlow's skipgrams utility.
         """
-        pairs, labels = skipgrams(sequence, vocabulary_size=vocab_size, window_size=window_size)
+        pairs, labels = skipgrams(
+            sequence,
+            vocabulary_size=vocab_size,
+            window_size=window_size,
+            negative_samples= negative_samples # Needed by NCE
+        )
         return np.array(pairs), np.array(labels)
 
-    def build_skipgram_model(vocab_size, embedding_dim):
+    def build_skipgram_model(vocab_size, embedding_dim, loss = "sparse_categorical_crossentropy"):
         """
         Build a skip-gram model with a single hidden layer.
         """
@@ -170,10 +170,11 @@ if __name__ == "__main__":
             Flatten(),
             Dense(vocab_size, activation='softmax')  # Output layer for token prediction
         ])
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+        #model.compile(optimizer='adam', loss=loss)
+        model.compile(optimizer='adam', loss=loss)
         return model
 
-    def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10):
+    def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10, loss= "sparse_categorical_crossentropy"):
         """
         Train a skip-gram model on the tokenized corpus.
         """
@@ -184,7 +185,7 @@ if __name__ == "__main__":
         pairs, labels = create_skipgram_pairs(flat_corpus, vocab_size, window_size)
 
         # Build the skip-gram model
-        model = build_skipgram_model(vocab_size, embedding_dim)
+        model = build_skipgram_model(vocab_size, embedding_dim, loss)
 
         # Train the model
         pairs_context, pairs_target = pairs[:, 0], pairs[:, 1]
@@ -192,14 +193,7 @@ if __name__ == "__main__":
 
         return model
 
-    # Flatten the corpus
-  #  tokenized_data = [item[0] for item in corpus]  # Extract the token from each sublist
- #   print(f"Tokenized Data: {tokenized_data[:5]}")  # Show first 5 tokens
-
-    # Create sequences from the tokenized data (e.g., sequences of length 5)
- #   sequences = [tokenized_data[i:i + 5] for i in range(0, len(tokenized_data), 5)]
- #   print(f"Tokenized Sequences: {sequences[:3]}")  # Display first 3 sequences
-
+    # example of how tokenized_data should look like
     tokenized_data = [
         [1, 2, 3, 4, 5],
         [2, 3, 4, 5, 6],
@@ -211,12 +205,13 @@ if __name__ == "__main__":
 
     # Parameters
     vocab_size = n_clusters_max # Set vocabulary size based on your tokens
-    embedding_dim = 50
+    embedding_dim = 300
     window_size = 20
     epochs = 10
+   # loss = "nce" # NEEDs to be IMPLEMENTED FROM SCRATCH
 
     # Train skip-gram model
-    model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size, epochs)
+    model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size, epochs)#, loss)
     print("Skip-gram model trained!")
 
     import numpy as np
@@ -247,8 +242,8 @@ if __name__ == "__main__":
     time_series_embeddings = get_all_embeddings(model, sequences)
 
     # Print embeddings for all tokens
-    for token, embedding in time_series_embeddings.items():
-        print(f"Token {token}: Embedding {embedding}")
+#    for token, embedding in time_series_embeddings.items():
+ #       print(f"Token {token}: Embedding {embedding}")
 
 
     def get_sequence_embeddings(sequences, model):
@@ -296,8 +291,23 @@ if __name__ == "__main__":
     # Now get the embeddings for each sequence
  #   time_series_embeddings = get_sequence_embedding(token_sequence, model)
     # Assuming 'model' is the trained skipgram model
-    # Get embeddings for all sequences
-    time_series_embeddings = np.array([get_sequence_embedding(seq, model) for seq in sequences])
+
+    # Step 2: Compute sequence embeddings
+    sequence_embeddings = np.array([get_sequence_embedding(seq, model) for seq in sequences])
+
+    # Step 3: Map back to individual tokens
+    token_embeddings = np.zeros((len(token_sequence), sequence_embeddings.shape[1]))
+    token_counts = np.zeros(len(token_sequence))
+
+    for i, seq in enumerate(sequences):
+        for j, token in enumerate(seq):
+            token_embeddings[i + j] += sequence_embeddings[i]
+            token_counts[i + j] += 1
+
+    token_embeddings /= token_counts[:, None]
+
+
+    time_series_embeddings = token_embeddings
 
     print(f"Shape of sequences: {len(sequences)}")
     # Show the result

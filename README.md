@@ -29,7 +29,7 @@
 
 ## 2025/01/27
 * Tested window size 10, and a bit different learning rate. Used standardscaler, instead of max scaler.
-![alt text](image.png)
+* * <img src="https://github.com/user-attachments/ssets/39d93eb3-9544-4d8d-a295-6f4f22fe3840)" width="600">
 
 Evanslearn/Thesis/image.png
 # TO DO

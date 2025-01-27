@@ -31,13 +31,13 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
 
     # Step 2: Assign tokens to data points
     tokens = kmeans.predict(data)
-    print(f"Tokens assigned to data points: {tokens[:5]}")  # Print first 5 token assignments
+    print(f"Tokens assigned to first 5 data points: {tokens[:5]}")  # Print first 5 token assignments
 
     # Step 3: Train k-NN classifier
     knn = KNeighborsClassifier(n_neighbors=knn_neighbors)
     knn.fit(data, tokens)
 
-    return kmeans, knn, tokens
+    return kmeans, knn, tokens, n_clusters
 
 
 def tokenize_new_data(knn, new_data):
@@ -94,19 +94,16 @@ if __name__ == "__main__":
     labels = makeLabelsInt(labels)
     print(f"----- AFTER DROPPING NA -----")
     print(f"Labels shape is = {labels.shape}")
-    print(f"Data shape is = {data.shape}")
+    print(f"Data shape is = {data.shape}\n")
 
-    n_clusters_min = 40 # Was initially 2
-    n_clusters_max = 50 # Was initially 10
+    n_clusters_min = 5 # Was initially 2
+    n_clusters_max = 30 # Was initially 10
     # Define the range for the number of clusters
     range_n_clusters = range(n_clusters_min, n_clusters_max)  # Desirable range
 
     # Train the tokenizer
     knn_neighbors = 50
-    kmeans_model, knn_model, tokens = train_tokenizer(data, range_n_clusters, knn_neighbors = knn_neighbors)
-
- #   corpus = [knn_model.predict(ts.reshape(1, -1))[0] for ts in data]
- #   print(f"Corpus: {corpus[:5]}")  # Display first 5 sequences
+    kmeans_model, knn_model, tokens, n_clusters = train_tokenizer(data, range_n_clusters, knn_neighbors = knn_neighbors)
 
     # Create the corpus as a sequence of tokens
     corpus = tokens.tolist()  # List of tokens representing the time series sequence
@@ -116,7 +113,7 @@ if __name__ == "__main__":
     token_sequence = [token for token in corpus]
     print(f"Token Sequence: {token_sequence[:50]}")
 
-    window_size = 5  # Length of each sequence
+    window_size = 10  # Length of each sequence
     stride = 1  # Step size to slide the window (1 ensures maximum overlap)
 
     sequences = [token_sequence[i:i + window_size]
@@ -124,22 +121,6 @@ if __name__ == "__main__":
     print(f"Number of overlapping sequences: {len(sequences)}")
     # Print the sequences
     print(sequences)
-
-
-
-    def notSureWhatThisis():
-        window_size = 20  # Define the window size for context
-        target_context_pairs = []
-
-        for i in range(window_size, len(corpus) - window_size):
-            target = corpus[i]
-            context = corpus[i - window_size:i] + corpus[i + 1:i + window_size + 1]
-            for ctx in context:
-                target_context_pairs.append((target, ctx))
-
-        print(f"Generated target-context pairs: {target_context_pairs[:5]}")
-        return;
-
 
 
 
@@ -321,13 +302,18 @@ if __name__ == "__main__":
         formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         df = pd.DataFrame(embeddings)
-        filename = abspath + "Embeddings" + "_" + formatted_datetime + ".csv"
+        case = "Pitt"
+        if "Pitt" in filepath_data:
+            case = "Pitt"
+        if "Lu" in filepath_data:
+            case = "Lu"
+        filename = abspath + "Embeddings" + "_" + case + "_" + formatted_datetime + ".csv"
 
         # Writing to CSV with pandas (which is generally faster)
         df.to_csv(filename, index=False, header=False)
 
         df_labels = pd.DataFrame(labels)
-        filename = abspath + "Labels" + "_" + formatted_datetime + ".csv"
+        filename = abspath + "Labels" + "_" + case +  "_" + formatted_datetime + ".csv"
         df_labels.to_csv(filename, index=False, header=False)
         pass;
 

@@ -29,9 +29,8 @@
 
 ## 2025/01/27
 * Tested window size 10, and a bit different learning rate. Used standardscaler, instead of max scaler.
-* * <img src="https://github.com/user-attachments/ssets/39d93eb3-9544-4d8d-a295-6f4f22fe3840)" width="900">
+* * <img src="https://github.com/user-attachments/ssets/39d93eb3-9544-4d8d-a295-6f4f22fe3840" width="900">
 
-Evanslearn/Thesis/image.png
 # TO DO
 * Experiment with sampling of the mp3 files?
 * Experiment with windowing, and maybe use a larger window that 5 that I have used?

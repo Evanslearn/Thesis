@@ -2,7 +2,7 @@
 
 ## 2025/01/15:
 * Tried to recreate the Signal2Vec logic. Did k-Means -> SkipGram -> kNN
-* <img src="https://github.com/user-attachments/assets/1f3c1216-c04e-4e08-ac8a-5cca9e4d1d1f" width="600">
+* <img src="https://github.com/user-attachments/assets/1f3c1216-c04e-4e08-ac8a-5cca9e4d1d1f" width="900">
 
 
 ## 2025/01/16
@@ -17,7 +17,7 @@
 
 ## 2025/01/19
 * Tried some more models for the created embeddings, as it troubled me that I initially used a pretrained CNN (and CNN for embeddings from time-series sounds strange...). The model is still problematic, as it's not learning, and does the same for each epch.
-* * <img src="https://github.com/user-attachments/assets/e9b59a2a-d37e-4ca4-b259-f2aa803f8516" width="600">
+* * <img src="https://github.com/user-attachments/assets/e9b59a2a-d37e-4ca4-b259-f2aa803f8516" width="900">
 
 ## 2025/01/20
 * Also tried timeseries from Pitt, and embedding with the wrong code. Results still not good, so need to fix signal2vec code
@@ -25,11 +25,11 @@
 ## 2025/01/26
 * 01 logic should be ok now? At least it gave the expected dimension in output, and logic is K-Means -> kNN - > Skipgram, and output shape is (number of rows) x (number of features we want)
 * Something is wrong with the classifier, as it's giving unstable results, where accuracy is usually oscillating, and predicted values are really similar for different instances that could have different labels.
-* * <img src="https://github.com/user-attachments/assets/7cf908ab-2950-417c-aa9e-01b8a221f44f" width="600">
+* * <img src="https://github.com/user-attachments/assets/7cf908ab-2950-417c-aa9e-01b8a221f44f" width="900">
 
 ## 2025/01/27
 * Tested window size 10, and a bit different learning rate. Used standardscaler, instead of max scaler.
-* * <img src="https://github.com/user-attachments/ssets/39d93eb3-9544-4d8d-a295-6f4f22fe3840)" width="600">
+* * <img src="https://github.com/user-attachments/ssets/39d93eb3-9544-4d8d-a295-6f4f22fe3840)" width="900">
 
 Evanslearn/Thesis/image.png
 # TO DO

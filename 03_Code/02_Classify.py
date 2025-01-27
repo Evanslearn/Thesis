@@ -193,7 +193,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
@@ -234,6 +234,7 @@ def model03_VangRNN(data, labels):
 
     # Normalize the data
     x_scaler = MinMaxScaler()
+    x_scaler = StandardScaler()
 
 #    X_train_normalized = np.array(x_scaler.fit_transform(X_train.shape(-1,1)))
  #   X_val_normalized = x_scaler.transform
@@ -280,9 +281,9 @@ def model03_VangRNN(data, labels):
     Y_test_initial = Y_test
 
     loss = 'binary_crossentropy'#'mae'
-    metrics = ['mse', 'accuracy']
+    metrics = ['mse', 'mae', 'accuracy']
     batch_size = 32
-    epochs = 30
+    epochs = 50
 
     units_simple = [32, 32]
     units_lstm = 32
@@ -359,7 +360,7 @@ def model03_VangRNN(data, labels):
     start_time = time.perf_counter() # Get current time at start
 
     # Compile the model
-    learning_rate = 0.1
+    learning_rate = 0.05
     momentum = 0.9
     optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
   #  optimizer = Adam(learning_rate=learning_rate)
@@ -397,7 +398,7 @@ def model03_VangRNN(data, labels):
     print(f'actual lables = {Y_test_normalized}')
 
     rand_index_pred = 5
-    random_numbers = [random.randint(0, Y_test_normalized.shape[0]) for _ in range(5)]
+    random_numbers = [random.randint(0, Y_test_normalized.shape[0]-1) for _ in range(5)]
     for i in random_numbers:
         print(f'\nFor i = {i}, we have:')
         print(f'Y_predictions[i]     = {predictions[i]}')

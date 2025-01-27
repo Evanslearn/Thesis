@@ -27,6 +27,11 @@
 * Something is wrong with the classifier, as it's giving unstable results, where accuracy is usually oscillating, and predicted values are really similar for different instances that could have different labels.
 * * <img src="https://github.com/user-attachments/assets/7cf908ab-2950-417c-aa9e-01b8a221f44f" width="600">
 
+## 2025/01/27
+* Tested window size 10, and a bit different learning rate. Used standardscaler, instead of max scaler.
+![alt text](image.png)
+
+Evanslearn/Thesis/image.png
 # TO DO
 * Experiment with sampling of the mp3 files?
 * Experiment with windowing, and maybe use a larger window that 5 that I have used?

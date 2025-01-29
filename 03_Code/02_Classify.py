@@ -11,6 +11,15 @@ import pandas as pd
 import numpy as np
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
+import random
+import matplotlib.pyplot as plt
+from tensorflow.keras.metrics import MeanSquaredError, Accuracy, Precision
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from tensorflow import keras
+from tensorflow.keras.optimizers import Adam
+tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 
 
 abspath = "/home/vang/Downloads/"
@@ -19,6 +28,7 @@ filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
 filepath_data = "Embeddings_Pitt_2025-01-26_23-29-29.csv"
 filepath_data = "Embeddings_Pitt_2025-01-28_00-39-51.csv"
+filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
 totalpath_data = abspath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 print(data.shape)
@@ -180,24 +190,6 @@ def model02_Densenet201(data, labels):
             print(f"Sample {idx}: {custom_classes[class_id]}: {100 * score:.1f}%")
 
     return model
-
-
-import time
-import random
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from tensorflow.keras.metrics import MeanSquaredError, Accuracy, Precision
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.model_selection import train_test_split
-import tensorflow as tf
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from tensorflow import keras
-from tensorflow.keras.optimizers import Adam
-tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
-
 
 def model03_VangRNN(data, labels):
     def f1_score(y_true, y_pred):

@@ -29,17 +29,26 @@ filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
 filepath_data = "Embeddings_Pitt_2025-01-26_23-29-29.csv"
 filepath_data = "Embeddings_Pitt_2025-01-28_00-39-51.csv"
 filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
+filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-01-30_00-49-18.csv"
+# filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" --- USE THIS TO TEST WITHOUT SIGNAL2VEC
 totalpath_data = abspath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 print(data.shape)
 
+# Drop NaN rows from data, # Reset indices after dropping rows
+# data = data.dropna().reset_index(drop=True)
+
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
+filepath_labels = "Labels_Pitt_2025-01-30_00-49-18.csv"
 totalpath_labels = abspath + filepath_labels
 initial_labels = pd.read_csv(totalpath_labels, header=None)
 print(type(initial_labels))
 print(initial_labels)
+
+
+
 if type(initial_labels) != type(pd.Series):
     initial_labels = initial_labels.iloc[:, 0] # convert to series
 
@@ -432,8 +441,16 @@ def plotTrainValAccuracy(history):
 
     # Show the plot
     plt.grid(True)
-    plt.show()
 
+    # Extract the part after "Embeddings_" and remove the extension
+    filename = os.path.basename(filepath_data)  # Get the base filename
+    filename_without_extension = os.path.splitext(filename)[0]  # Remove the extension (.csv)
+    dynamic_filename = filename_without_extension.replace("Embeddings_", "")  # Remove "Embeddings_"
+    # Define the new filename for saving the plot
+    save_filename = f"figure_{dynamic_filename}.png"  # Save as PNG
+    plt.savefig(save_filename) # Save the plot using the dynamic filename
+
+    plt.show()
 
 
 #modelResnet50 = model01_Resnet50(data, labels)

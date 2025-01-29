@@ -1,5 +1,8 @@
 import time
 from datetime import datetime
+from fileinput import filename
+from os.path import abspath
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -155,7 +158,7 @@ def get_sequence_embedding(token_sequence, model):
 
     return sequence_embedding
 
-def SaveEmbeddingsToOutput(embeddings):
+def SaveEmbeddingsToOutput(embeddings, **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     df = pd.DataFrame(embeddings)
@@ -164,7 +167,12 @@ def SaveEmbeddingsToOutput(embeddings):
         case = "Pitt"
     if "Lu" in filepath_data:
         case = "Lu"
-    filename = abspath + "Embeddings" + "_" + case + "_" + formatted_datetime + ".csv"
+
+#    filename_variables = "".join(f"{key}{value}_" for key, value in name_kwargs.items()).rstrip("_")
+    filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in name_kwargs.items()).rstrip("_")
+
+
+    filename = abspath + "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
 
     # Writing to CSV with pandas (which is generally faster)
     df.to_csv(filename, index=False, header=False)
@@ -177,7 +185,8 @@ def SaveEmbeddingsToOutput(embeddings):
 
 # Example Usage
 if __name__ == "__main__":
-    abspath = "/home/vang/Downloads/"
+  #  abspath = "/home/vang/Downloads/"
+    abspath = ""
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
     data = returnData(abspath, filepath_data)
@@ -189,10 +198,8 @@ if __name__ == "__main__":
     print(f"----- BEFORE DROPPING NA -----")
     print(f"Labels shape is = {initial_labels.shape}")
     print(f"Data shape is = {data.shape}")
-    # Drop NaN rows from data
-    data = data.dropna()
-    # Reset indices after dropping rows
-    data = data.reset_index(drop=True)
+    # Drop NaN rows from data, # Reset indices after dropping rows
+    data = data.dropna().reset_index(drop=True)
     # Ensure labels align with the updated data
     labels = initial_labels[data.index]
     labels = labels.reset_index(drop=True)
@@ -239,12 +246,12 @@ if __name__ == "__main__":
     # Parameters
     vocab_size = n_clusters_max  # Set vocabulary size based on your tokens
     embedding_dim = 300
-    window_size = 20
+    window_size_skipgram = 20
     epochs = 10
     # loss = "nce" # NEEDs to be IMPLEMENTED FROM SCRATCH
 
     # Train skip-gram model
-    model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size, epochs)  # , loss)
+    model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size_skipgram, epochs)  # , loss)
     print("Skip-gram model trained!")
 
     # Assume `sequences` is your input data and `model` is the trained skip-gram model
@@ -270,4 +277,12 @@ if __name__ == "__main__":
     print(f"Shape of sequence embedding: {time_series_embeddings.shape}")
     print(f"Sequence embedding:\n{time_series_embeddings}")
 
-    SaveEmbeddingsToOutput(time_series_embeddings)
+    name_kwargs = {
+        "nCl": {n_clusters},
+        "nN": {knn_neighbors},
+        "winSize": {window_size},
+        "stride": {stride},
+        "winSizeSkip": {window_size_skipgram},
+        "nEmbeddings": {embedding_dim}
+    }
+    SaveEmbeddingsToOutput(time_series_embeddings, **name_kwargs)

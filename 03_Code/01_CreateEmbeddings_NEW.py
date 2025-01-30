@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime
 from fileinput import filename
@@ -158,7 +159,23 @@ def get_sequence_embedding(token_sequence, model):
 
     return sequence_embedding
 
-def SaveEmbeddingsToOutput(embeddings, **kwargs):
+def returnFilepathToSubfolder(filename, subfolderName):
+
+    # Get the current directory of script execution
+    current_directory = os.getcwd()
+
+    # Define the output folder inside the current directory
+    output_folder = os.path.join(current_directory, subfolderName)
+
+    # Create the folder if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Define the file path inside the output folder
+    file_path = os.path.join(output_folder, filename)
+
+    return file_path
+
+def SaveEmbeddingsToOutput(embeddings, subfolderName, **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     df = pd.DataFrame(embeddings)
@@ -172,28 +189,38 @@ def SaveEmbeddingsToOutput(embeddings, **kwargs):
     filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in name_kwargs.items()).rstrip("_")
 
 
-    filename = abspath + "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
+ #   filename = abspath + "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
+    filename = "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
+    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
 
     # Writing to CSV with pandas (which is generally faster)
-    df.to_csv(filename, index=False, header=False)
+    df.to_csv(filenameFull, index=False, header=False)
 
     df_labels = pd.DataFrame(labels)
-    filename = abspath + "Labels" + "_" + case +  "_" + formatted_datetime + ".csv"
-    df_labels.to_csv(filename, index=False, header=False)
+ #   filename = abspath + "Labels" + "_" + case +  "_" + formatted_datetime + ".csv"
+    filename = "Labels" + "_" + case + "_" + formatted_datetime + ".csv"
+    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+    df_labels.to_csv(filenameFull, index=False, header=False)
     pass;
+
+
+
 
 
 # Example Usage
 if __name__ == "__main__":
   #  abspath = "/home/vang/Downloads/"
     abspath = ""
+    abspath = os.getcwd()
+    timeSeriesDataPath = "/00_TimeSeriesData/"
+    folderPath = abspath + timeSeriesDataPath
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
-    data = returnData(abspath, filepath_data)
+    data = returnData(folderPath, filepath_data)
 
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
-    initial_labels = returnLabels(abspath, filepath_labels)
+    initial_labels = returnLabels(folderPath, filepath_labels)
 
     print(f"----- BEFORE DROPPING NA -----")
     print(f"Labels shape is = {initial_labels.shape}")
@@ -285,4 +312,5 @@ if __name__ == "__main__":
         "winSizeSkip": {window_size_skipgram},
         "nEmbeddings": {embedding_dim}
     }
-    SaveEmbeddingsToOutput(time_series_embeddings, **name_kwargs)
+    subfoldername = "01_Embeddings"
+    SaveEmbeddingsToOutput(time_series_embeddings, subfoldername, **name_kwargs)

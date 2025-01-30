@@ -21,8 +21,28 @@ from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 
+def returnFilepathToSubfolder(filename, subfolderName):
+
+    # Get the current directory of script execution
+    current_directory = os.getcwd()
+
+    # Define the output folder inside the current directory
+    output_folder = os.path.join(current_directory, subfolderName)
+
+    # Create the folder if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Define the file path inside the output folder
+    file_path = os.path.join(output_folder, filename)
+
+    return file_path
+
+
+
 
 abspath = "/home/vang/Downloads/"
+abspath = os.getcwd()
+embeddingsPath = "/01_Embeddings/"
 filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
@@ -31,7 +51,7 @@ filepath_data = "Embeddings_Pitt_2025-01-28_00-39-51.csv"
 filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-01-30_00-49-18.csv"
 # filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" --- USE THIS TO TEST WITHOUT SIGNAL2VEC
-totalpath_data = abspath + filepath_data
+totalpath_data = abspath + embeddingsPath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
 print(data.shape)
 
@@ -42,7 +62,7 @@ filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
 filepath_labels = "Labels_Pitt_2025-01-30_00-49-18.csv"
-totalpath_labels = abspath + filepath_labels
+totalpath_labels = abspath + embeddingsPath +filepath_labels
 initial_labels = pd.read_csv(totalpath_labels, header=None)
 print(type(initial_labels))
 print(initial_labels)
@@ -448,6 +468,9 @@ def plotTrainValAccuracy(history):
     dynamic_filename = filename_without_extension.replace("Embeddings_", "")  # Remove "Embeddings_"
     # Define the new filename for saving the plot
     save_filename = f"figure_{dynamic_filename}.png"  # Save as PNG
+
+    subfolderName = "02_ClassificationResults"
+    returnFilepathToSubfolder(save_filename, subfolderName)
     plt.savefig(save_filename) # Save the plot using the dynamic filename
 
     plt.show()

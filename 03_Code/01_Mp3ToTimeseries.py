@@ -275,7 +275,7 @@ if __name__ == "__main__":
     print(f"Counts of Control = {labels.count('C')}")
     print(f"Counts of Dementia = {labels.count('D')}")
 
-    subfolderName = '00_TimeSeriesData'
+    subfolderName = '01_TimeSeriesData'
 
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     createFileLabels(labels, subfolderName, formatted_datetime)

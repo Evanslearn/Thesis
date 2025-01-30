@@ -42,7 +42,7 @@ def returnFilepathToSubfolder(filename, subfolderName):
 
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
-embeddingsPath = "/01_Embeddings/"
+embeddingsPath = "/02_Embeddings/"
 filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
@@ -469,7 +469,7 @@ def plotTrainValAccuracy(history):
     # Define the new filename for saving the plot
     save_filename = f"figure_{dynamic_filename}.png"  # Save as PNG
 
-    subfolderName = "02_ClassificationResults"
+    subfolderName = "03_ClassificationResults"
     returnFilepathToSubfolder(save_filename, subfolderName)
     plt.savefig(save_filename) # Save the plot using the dynamic filename
 

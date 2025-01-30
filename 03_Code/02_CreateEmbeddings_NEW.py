@@ -212,7 +212,7 @@ if __name__ == "__main__":
   #  abspath = "/home/vang/Downloads/"
     abspath = ""
     abspath = os.getcwd()
-    timeSeriesDataPath = "/00_TimeSeriesData/"
+    timeSeriesDataPath = "/01_TimeSeriesData/"
     folderPath = abspath + timeSeriesDataPath
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
@@ -312,5 +312,5 @@ if __name__ == "__main__":
         "winSizeSkip": {window_size_skipgram},
         "nEmbeddings": {embedding_dim}
     }
-    subfoldername = "01_Embeddings"
+    subfoldername = "02_Embeddings"
     SaveEmbeddingsToOutput(time_series_embeddings, subfoldername, **name_kwargs)

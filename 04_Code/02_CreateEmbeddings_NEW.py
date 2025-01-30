@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from fileinput import filename
 from os.path import abspath
+from utils00 import returnFilepathToSubfolder
 
 import numpy as np
 import pandas as pd
@@ -158,22 +159,6 @@ def get_sequence_embedding(token_sequence, model):
     sequence_embedding = np.mean(embeddings, axis=0)
 
     return sequence_embedding
-
-def returnFilepathToSubfolder(filename, subfolderName):
-
-    # Get the current directory of script execution
-    current_directory = os.getcwd()
-
-    # Define the output folder inside the current directory
-    output_folder = os.path.join(current_directory, subfolderName)
-
-    # Create the folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Define the file path inside the output folder
-    file_path = os.path.join(output_folder, filename)
-
-    return file_path
 
 def SaveEmbeddingsToOutput(embeddings, subfolderName, **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

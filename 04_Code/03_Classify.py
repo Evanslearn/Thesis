@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 import torch
 import torch.optim as optim
@@ -20,24 +21,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
-
-def returnFilepathToSubfolder(filename, subfolderName):
-
-    # Get the current directory of script execution
-    current_directory = os.getcwd()
-
-    # Define the output folder inside the current directory
-    output_folder = os.path.join(current_directory, subfolderName)
-
-    # Create the folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Define the file path inside the output folder
-    file_path = os.path.join(output_folder, filename)
-
-    return file_path
-
-
+from utils00 import returnFilepathToSubfolder
 
 
 abspath = "/home/vang/Downloads/"
@@ -466,12 +450,21 @@ def plotTrainValAccuracy(history):
     filename = os.path.basename(filepath_data)  # Get the base filename
     filename_without_extension = os.path.splitext(filename)[0]  # Remove the extension (.csv)
     dynamic_filename = filename_without_extension.replace("Embeddings_", "")  # Remove "Embeddings_"
+
+    # Remove the old timestamp (assuming it's always at the end, separated by "_")
+    parts = dynamic_filename.rsplit("_", 1)  # Split into two parts: before timestamp, and timestamp
+    dynamic_filename_without_timestamp = parts[0]  # Keep only the first part
+
+    # Generate the new timestamp
+    current_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    new_dynamic_filename = f"{dynamic_filename_without_timestamp}_{current_timestamp}"
+
     # Define the new filename for saving the plot
-    save_filename = f"figure_{dynamic_filename}.png"  # Save as PNG
+    save_filename = f"figure_{new_dynamic_filename}.png"  # Save as PNG
 
     subfolderName = "03_ClassificationResults"
-    returnFilepathToSubfolder(save_filename, subfolderName)
-    plt.savefig(save_filename) # Save the plot using the dynamic filename
+    filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
+    plt.savefig(filenameFull) # Save the plot using the dynamic filename
 
     plt.show()
 

@@ -5,7 +5,7 @@ import csv
 import pandas as pd
 import time
 from datetime import datetime
-
+from utils00 import returnFilepathToSubfolder
 
 def extract_speaker_segments(audio, sr, frame_length=2048, hop_length=512):
     """
@@ -118,21 +118,6 @@ def pad_or_truncate(audio, target_length):
         return audio[:target_length]  # Truncate if too long
     return np.pad(audio, (0, target_length - len(audio)))  # Pad if too short
 
-def returnFilepathToSubfolder(filename, subfolderName):
-
-    # Get the current directory of script execution
-    current_directory = os.getcwd()
-
-    # Define the output folder inside the current directory
-    output_folder = os.path.join(current_directory, subfolderName)
-
-    # Create the folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Define the file path inside the output folder
-    file_path = os.path.join(output_folder, filename)
-
-    return file_path
 
 def createFileLabels(labels, subfolderName, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
 

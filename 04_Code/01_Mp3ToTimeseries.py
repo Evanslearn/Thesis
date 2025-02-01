@@ -5,37 +5,48 @@ import csv
 import pandas as pd
 import time
 from datetime import datetime
+import librosa
+import numpy as np
 from utils00 import returnFilepathToSubfolder
 
-def extract_speaker_segments(audio, sr, frame_length=2048, hop_length=512):
+def loadMp3AndConvertToTimeseries(file_path, sr=None, printFlag = "No"):
+    # Load MP3 with file_path
+    data, sample_rate = librosa.load(file_path, sr=sr)  # sr=None keeps original sampling rate, default sr=22050
+
+    if printFlag != "No":
+        # Print basic info
+        print(f"Sample Rate: {sample_rate} Hz")
+        print(f"Audio Length: {len(data) / sample_rate} seconds")
+        print(f"Time Series Shape: {data.shape}")
+
+    return data, sample_rate
+
+def extract_speaker_segments(audio, frame_length=2048, hop_length=512, threshold = 0.02):
     """
     Detects speaker activity (speech activity).
     """
     # Use RMS energy to detect speech regions
     rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length).flatten()
 
-    # Define threshold for speech
-    threshold = 0.02
+    # Filter based on some threshold for speech
     speech_segments = rms > threshold  # Boolean array for active speech regions
 
     return speech_segments, rms
 
-
-def extract_time_series_from_conversation(mp3_path, sample_rate=22050):
+def extract_time_series_from_conversation(mp3_path, sample_rate=22050, frame_length=2048, hop_length=512, threshold = 0.02):
     """
     Extracts a time series of features from a conversation.
     """
-    audio, sr = librosa.load(mp3_path, sr=sample_rate)
+    audio, sr = loadMp3AndConvertToTimeseries(mp3_path, sr=sample_rate)
 
     # Extract speech regions
-    speech_segments, rms = extract_speaker_segments(audio, sr)
+    speech_segments, rms = extract_speaker_segments(audio, frame_length, hop_length, threshold)
 
     # Create time series based on RMS energy
     time_series = rms[speech_segments]  # Filter only active regions
 
     # Return time series and energy
     return time_series
-
 
 def preprocess_time_series(time_series, desired_length=512):
     """
@@ -44,8 +55,9 @@ def preprocess_time_series(time_series, desired_length=512):
     x_original = np.linspace(0, 1, len(time_series))
     x_new = np.linspace(0, 1, desired_length)
     time_series_resampled = np.interp(x_new, x_original, time_series)
+  #  print(f"a time series {time_series.shape}")
 
-    # Normalize
+    # Normalize - This is per-sample normalization, so it's fine (no data leakage from one sample to another - so no train-test data leakage)
     time_series_normalized = (time_series_resampled - np.min(time_series_resampled)) / (
         np.max(time_series_resampled) - np.min(time_series_resampled)
     )
@@ -53,76 +65,16 @@ def preprocess_time_series(time_series, desired_length=512):
     return time_series_normalized
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-# Step 2: Preprocess data
-def preprocess_data(data):
-
-    from sklearn.preprocessing import StandardScaler
-    data = [len(item) for item in data]  # Dummy conversion: length of utterance
-    data = [[val] for val in data]  # Convert to 2D for scaler
-    scaler = StandardScaler()
-    normalized_data = scaler.fit_transform(data)
-    return normalized_data
-
-
-
-
-
-
-
-
-
-
-import librosa
-import numpy as np
-import matplotlib.pyplot as plt
-
-def loadMp3AndConvertToTimeseries(file_path, sr=None, printFlag = "No"):
-    # Load MP3 with file_path
-    data, sample_rate = librosa.load(file_path, sr=sr)  # sr=None keeps original sampling rate, default sr=22050
-
-#    print(type(data))
-#    print(data.shape)
-
-    if printFlag != "No":
-        # Print basic info
-        print(f"Sample Rate: {sample_rate} Hz")
-        print(f"Audio Length: {len(data) / sample_rate} seconds")
-        print(f"Time Series Shape: {data.shape}")
-
-    return (data, sample_rate)
-
-def plotTimeSeries(data, sample_rate):
-    # Plot the time series
-    time = np.linspace(0., len(data) / sample_rate, len(data))
-    plt.figure(figsize=(10, 4))
-    plt.plot(time, data)
-    plt.xlabel("Time [s]")
-    plt.ylabel("Amplitude")
-    plt.title("MP3 Audio Time Series")
-    plt.show()
-
 def pad_or_truncate(audio, target_length):
     if len(audio) > target_length:
         return audio[:target_length]  # Truncate if too long
     return np.pad(audio, (0, target_length - len(audio)))  # Pad if too short
 
 
-def createFileLabels(labels, subfolderName, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
+def createFileLabels(labels, subfolderName, filenameVars, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
 
     df_labels = pd.DataFrame(labels)
-    filename = file_path_specific + "_" + "sR" + str(sample_rate) + "_" + formatted_datetime + "_" + "labels.csv"
+    filename = file_path_specific + f"_labels" + filenameVars + formatted_datetime + f".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     df_labels.to_csv(filenameFull, index=False, header=False)
 
@@ -134,7 +86,7 @@ def createFileCsv_pandas(padded_data, subfolderName, formatted_datetime=datetime
     # After all files have been processed, convert to DataFrame and write to CSV
     df = pd.DataFrame(padded_data)
     #     df = pd.DataFrame(csv_data, columns=["label", "sampling rate", "length", "FEATURES i to N"])
-    filename = file_path_specific + "_" + "sR" + str(sample_rate) + "_" + formatted_datetime + "_" + "output.csv"
+    filename = file_path_specific + "_output_" + "sR" + str(sample_rate) + "_" + formatted_datetime + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
 
     # Writing to CSV with pandas (which is generally faster)
@@ -144,8 +96,8 @@ def createFileCsv_pandas(padded_data, subfolderName, formatted_datetime=datetime
     print(f"Pandas Time: {pandas_writer_time:.2f} seconds")
     print(f"Data written to csv file - {filenameFull}")
 
-def createFileCsv_simple(padded_data, subfolderName, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
-    filename = file_path_specific + "_" + "sR" + str(sample_rate) + "_" + formatted_datetime + "_" + "output.csv"
+def createFileCsv_simple(padded_data, subfolderName, filenameVars, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
+    filename = file_path_specific + "_output" + filenameVars + formatted_datetime  + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     start_time = time.time()
 
@@ -163,19 +115,12 @@ def createFileCsv_simple(padded_data, subfolderName, formatted_datetime=datetime
     print(f"Data written to csv file - {filenameFull}")
 
 
-
-
-
-
 # Main Workflow
 if __name__ == "__main__":
 
     # Example for 1 specific file
     file_path = "G:/My Drive/00_AI Master/3 Διπλωματική/05_Data/Lu/Control/F22.mp3"
     data, sample_rate = loadMp3AndConvertToTimeseries(file_path)
-
-
-
 
 #    preprocessed_data = preprocess_data(parsed_data)
 
@@ -260,10 +205,11 @@ if __name__ == "__main__":
     print(f"Counts of Control = {labels.count('C')}")
     print(f"Counts of Dementia = {labels.count('D')}")
 
+    filenameVars = f"_sR{sample_rate}_"
     subfolderName = '01_TimeSeriesData'
 
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    createFileLabels(labels, subfolderName, formatted_datetime)
+    createFileLabels(labels, subfolderName, filenameVars, formatted_datetime)
 
     flagPandas = "Yes"
     flagCSV = "Yes"
@@ -271,7 +217,7 @@ if __name__ == "__main__":
     if flagPandas == "Yes":
         createFileCsv_pandas(padded_data, subfolderName, formatted_datetime)
     if flagCSV == "Yes":
-        createFileCsv_simple(padded_data, subfolderName)
+        createFileCsv_simple(padded_data, filenameVars, subfolderName)
         # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
 
 
@@ -286,7 +232,7 @@ if __name__ == "__main__":
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_path_specific = "Pitt"
     file_path = os.path.join(file_path_base, file_path_specific)
-    sample_rate = 22050/2  # Example sampling rate
+    sample_rate = int(22050/2)  # Example sampling rate
 
     files = []
     labels = []
@@ -314,8 +260,12 @@ if __name__ == "__main__":
                     print(f"   --- Processing file number ---   {len(labels)}")
                 file_path_mp3 = join(dirpath, filename)  # Full path to the MP3 file
 
+    frame_length = 2048
+    hop_length = 512
+    threshold = 0.02
 
-    createFileLabels(labels, subfolderName, formatted_datetime)
+    filenameVars = f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
+    createFileLabels(labels, subfolderName, filenameVars, formatted_datetime)
 
     time_series_processed_ALL = []
     for category, folder in categories.items():
@@ -326,7 +276,7 @@ if __name__ == "__main__":
             if idx % 10 == 0:
                 print(f"Row number = {idx}")
             # Extract time series from conversation
-            time_series = extract_time_series_from_conversation(mp3_file, sample_rate=sample_rate)
+            time_series = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
 
             # Preprocess and generate time series
             if len(time_series) > 0:
@@ -337,6 +287,6 @@ if __name__ == "__main__":
     total_timeseries_time = time.time() - start_time
     print(f"Total timeseries time: {total_timeseries_time:.2f} seconds")
 
-    output_filename = os.path.join(file_path_specific, f"_sR{sample_rate}_{formatted_datetime}_output.csv")
+    output_filename = os.path.join(file_path_specific, f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
 
-    createFileCsv_simple(time_series_processed_ALL, subfolderName)
+    createFileCsv_simple(time_series_processed_ALL, subfolderName, filenameVars)

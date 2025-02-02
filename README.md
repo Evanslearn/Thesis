@@ -34,6 +34,10 @@
 ## 2025/01/28-31
 * Code cleanup + renames
 
+## 2025/02/01-02
+* Refactoring to remove data leakage
+* Also tried 70-15-15 split instead of 70-10-20
+
 # TO DO
 * Experiment with sampling of the mp3 files?
 * Experiment with windowing, and maybe use a larger window that 5 that I have used?

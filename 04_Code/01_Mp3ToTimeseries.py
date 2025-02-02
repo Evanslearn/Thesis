@@ -58,9 +58,13 @@ def preprocess_time_series(time_series, desired_length=512):
   #  print(f"a time series {time_series.shape}")
 
     # Normalize - This is per-sample normalization, so it's fine (no data leakage from one sample to another - so no train-test data leakage)
+    eps = 1e-8
     time_series_normalized = (time_series_resampled - np.min(time_series_resampled)) / (
-        np.max(time_series_resampled) - np.min(time_series_resampled)
+            np.max(time_series_resampled) - np.min(time_series_resampled) + eps
     )
+    # if i want to try z-score norm
+ #   time_series_normalized = (time_series_resampled - np.mean(time_series_resampled)) / (
+ #               np.std(time_series_resampled) + eps)
 
     return time_series_normalized
 

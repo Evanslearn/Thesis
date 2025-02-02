@@ -21,8 +21,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
-from utils00 import returnFilepathToSubfolder
-
+from utils00 import returnFilepathToSubfolder, doTrainValTestSplit
 
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
@@ -222,19 +221,11 @@ def model03_VangRNN(data, labels):
     X_data = np.array(data); Y_targets = np.array(labels)
     print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-    random_state = 0
+
     test_ratio = 0.2
-    X_train_val, X_test, Y_train_val, Y_test = train_test_split(X_data, Y_targets, test_size=test_ratio,
-                                                                random_state=random_state)#, stratify=Y_targets)
-
     val_ratio = 0.25
-    print(
-        f'''We have already used {test_ratio * 100}% of the data for the test set. So now, the val_ratio = {val_ratio * 100}%
-    of the val-train data, translates to {(1 - test_ratio) * val_ratio * 100} of the total data.''')
-    X_train, X_val, Y_train, Y_val = train_test_split(X_train_val, Y_train_val, test_size=val_ratio,
-                                                      random_state=random_state)#, stratify=Y_train_val)
-
-    print(f'train - {Y_train}, \nval - {Y_val},\ntest {Y_test}')
+    random_state_split = 0
+    X_train, X_val, X_test, Y_train, Y_val, Y_test = doTrainValTestSplit(X_data, Y_targets, test_ratio, val_ratio, random_state_split)
 
 
     # Normalize the data

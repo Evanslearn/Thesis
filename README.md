@@ -35,8 +35,10 @@
 * Code cleanup + renames
 
 ## 2025/02/01-02
-* Refactoring to remove data leakage
+* Refactoring to remove data leakage. Sadly, this led to achieving significantly lower metric values, but is the correct way to go:
+* <img src="https://github.com/user-attachments/assets/b25cb7bc-d441-4b3a-be32-1b1ad31e691e" width="900">
 * Also tried 70-15-15 split instead of 70-10-20
+* made an attempt to use stratification, but didn't make it yet. There are some considerations here, mostly about making sure we use the same instances between steps 2 and 3
 
 # TO DO
 * Experiment with sampling of the mp3 files?

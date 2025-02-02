@@ -184,36 +184,33 @@ def convertBackIntoTokenEmbeddings(token_sequence, sequences, sequence_embedding
     print(f"Sequence embedding:\n{token_embeddings}")
     return token_embeddings
 
-def SaveEmbeddingsToOutput(embeddings, subfolderName, **kwargs):
+def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, setType="NO", **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     df = pd.DataFrame(embeddings)
-    case = "Pitt"
+    caseType = "Pitt"
     if "Pitt" in filepath_data:
-        case = "Pitt"
+        caseType = "Pitt"
     if "Lu" in filepath_data:
-        case = "Lu"
+        caseType = "Lu"
+    if setType!= "NO":
+        caseTypeString = f"_{caseType}_{setType}_"
+    else:
+        caseTypeString = f"_{caseType}_"
 
-#    filename_variables = "".join(f"{key}{value}_" for key, value in name_kwargs.items()).rstrip("_")
     filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in name_kwargs.items()).rstrip("_")
 
-
- #   filename = abspath + "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
-    filename = "Embeddings" + "_" + case + "_" + filename_variables + "_" + formatted_datetime + ".csv"
+    filename = "Embeddings" + caseTypeString + filename_variables + "_" + formatted_datetime + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
 
     # Writing to CSV with pandas (which is generally faster)
     df.to_csv(filenameFull, index=False, header=False)
 
     df_labels = pd.DataFrame(labels)
- #   filename = abspath + "Labels" + "_" + case +  "_" + formatted_datetime + ".csv"
-    filename = "Labels" + "_" + case + "_" + formatted_datetime + ".csv"
+    filename = "Labels" + caseTypeString + formatted_datetime + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     df_labels.to_csv(filenameFull, index=False, header=False)
     pass;
-
-
-
 
 
 # Example Usage
@@ -312,4 +309,7 @@ if __name__ == "__main__":
         "nEmbeddings": embedding_dim
     }
     subfoldername = "02_Embeddings"
-    SaveEmbeddingsToOutput(trainValTest_embeddings, subfoldername, **name_kwargs)
+    SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, **name_kwargs)
+ #   SaveEmbeddingsToOutput(train_timeseries_embeddings, labels_train, "train", subfoldername, **name_kwargs)
+ #   SaveEmbeddingsToOutput(val_timeseries_embeddings, labels_val,"val", subfoldername, **name_kwargs)
+ #   SaveEmbeddingsToOutput(test_timeseries_embeddings, labels_test,"test", subfoldername, **name_kwargs)

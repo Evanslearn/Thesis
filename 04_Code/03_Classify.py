@@ -1,5 +1,6 @@
-from datetime import datetime
 import time
+from datetime import datetime
+import random
 import torch
 import torch.optim as optim
 import torchvision
@@ -10,25 +11,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
 import numpy as np
+import tensorflow as tf
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
-import random
 import matplotlib.pyplot as plt
 from tensorflow.keras.metrics import MeanSquaredError, Accuracy, Precision
 from sklearn.model_selection import train_test_split
-import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.metrics import accuracy_score
+from sklearn.utils import resample
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit
 
-import numpy as np
-from sklearn.metrics import accuracy_score
-from sklearn.utils import resample
-
-
-def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95):
+def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95, random_state = 0):
     """
     Compute confidence interval for a metric (e.g., accuracy) using bootstrap sampling.
 
@@ -48,11 +45,11 @@ def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95):
     # Perform bootstrap sampling
     for i in range(n_bootstrap):
         # Check every 10th iteration
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 50 == 0:
             print(f"Bootstrap iteration {i + 1} completed")
 
         # Resample the data with replacement
-        X_resampled, Y_resampled = resample(X_test, Y_test, random_state=None)
+        X_resampled, Y_resampled = resample(X_test, Y_test, random_state=random_state)
 
         # Predict on the resampled data
         predictions = model.predict(X_resampled, verbose=0)
@@ -82,6 +79,112 @@ def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.ylabel('Frequency')
     plt.show()
 
+def plotTrainValMetrics(history):
+    # Access metrics from the history
+    training_accuracy = history.history['accuracy']
+    validation_accuracy = history.history['val_accuracy']
+    training_loss = history.history['loss']
+    validation_loss = history.history['val_loss']
+    training_mae = history.history['mae']
+    validation_mae = history.history['val_mae']
+    training_mse = history.history['mse']
+    validation_mse = history.history['val_mse']
+
+    # Get the number of epochs from the length of the accuracy history
+    epochs = len(training_accuracy)
+
+    # Create a 2x2 grid for subplots
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    # Plot training and validation accuracy
+    axes[0, 0].plot(range(1, epochs + 1), training_accuracy, label='Training Accuracy', color='blue', marker='o')
+    axes[0, 0].plot(range(1, epochs + 1), validation_accuracy, label='Validation Accuracy', color='orange', marker='o')
+    axes[0, 0].set_title('Accuracy vs Epoch')
+    axes[0, 0].set_xlabel('Epochs')
+    axes[0, 0].set_ylabel('Accuracy')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+
+    # Plot training and validation loss
+    axes[0, 1].plot(range(1, epochs + 1), training_loss, label='Training Loss', color='blue', marker='o')
+    axes[0, 1].plot(range(1, epochs + 1), validation_loss, label='Validation Loss', color='orange', marker='o')
+    axes[0, 1].set_title('Loss vs Epoch')
+    axes[0, 1].set_xlabel('Epochs')
+    axes[0, 1].set_ylabel('Loss')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True)
+
+    # Plot training and validation MAE
+    axes[1, 0].plot(range(1, epochs + 1), training_mae, label='Training MAE', color='blue', marker='o')
+    axes[1, 0].plot(range(1, epochs + 1), validation_mae, label='Validation MAE', color='orange', marker='o')
+    axes[1, 0].set_title('MAE vs Epoch')
+    axes[1, 0].set_xlabel('Epochs')
+    axes[1, 0].set_ylabel('MAE')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True)
+
+    # Plot training and validation MSE
+    axes[1, 1].plot(range(1, epochs + 1), training_mse, label='Training MSE', color='blue', marker='o')
+    axes[1, 1].plot(range(1, epochs + 1), validation_mse, label='Validation MSE', color='orange', marker='o')
+    axes[1, 1].set_title('MSE vs Epoch')
+    axes[1, 1].set_xlabel('Epochs')
+    axes[1, 1].set_ylabel('MSE')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True)
+
+    # Adjust layout to prevent overlap
+    plt.tight_layout()
+
+    # Extract the part after "Embeddings_" and remove the extension
+    filename = os.path.basename(filepath_data)  # Get the base filename
+    filename_without_extension = os.path.splitext(filename)[0]  # Remove the extension (.csv)
+    dynamic_filename = filename_without_extension.replace("Embeddings_", "")  # Remove "Embeddings_"
+
+    # Remove the old timestamp (assuming it's always at the end, separated by "_")
+    parts = dynamic_filename.rsplit("_", 1)  # Split into two parts: before timestamp, and timestamp
+    dynamic_filename_without_timestamp = parts[0]  # Keep only the first part
+
+    # Generate the new timestamp
+    current_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    new_dynamic_filename = f"{dynamic_filename_without_timestamp}_{current_timestamp}"
+
+    # Define the new filename for saving the plot
+    save_filename = f"figure_{new_dynamic_filename}.png"  # Save as PNG
+
+    subfolderName = "03_ClassificationResults"
+    filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
+    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
+
+    plt.show()
+
+def returnData(filepath_data):
+    totalpath_data = abspath + embeddingsPath + filepath_data
+    data = pd.read_csv(totalpath_data, header=None)
+    print(data.shape)
+    return data
+
+def returnLabels(filepath_label):
+    initial_labels = returnData(filepath_label)
+
+    if type(initial_labels) != type(pd.Series):
+#        print(f"type is: {type(initial_labels)}")
+        initial_labels = initial_labels.iloc[:, 0]  # convert to series
+
+    labels = initial_labels.to_numpy()
+    print(labels)
+    return labels
+
+
+def returnTrainValTest(path_train, path_val, path_test, path_train_labels, path_val_labels, path_test_labels):
+    totalpath_train = abspath + embeddingsPath + path_train
+    totalpath_val = abspath + embeddingsPath + path_val
+    totalpath_test = abspath + embeddingsPath + path_test
+    X_train = pd.read_csv(totalpath_train, header=None)
+    X_val = pd.read_csv(totalpath_val, header=None)
+    X_test = pd.read_csv(totalpath_test, header=None)
+
+    return X_train, X_val, X_test
+
 
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
@@ -94,10 +197,9 @@ filepath_data = "Embeddings_Pitt_2025-01-28_00-39-51.csv"
 filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-01-30_00-49-18.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_16-27-13.csv"
+filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-37-08.csv"
 # filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" --- USE THIS TO TEST WITHOUT SIGNAL2VEC
-totalpath_data = abspath + embeddingsPath + filepath_data
-data = pd.read_csv(totalpath_data, header=None)
-print(data.shape)
+data = returnData(filepath_data)
 
 # Drop NaN rows from data, # Reset indices after dropping rows
 # data = data.dropna().reset_index(drop=True)
@@ -107,24 +209,27 @@ filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
 filepath_labels = "Labels_Pitt_2025-01-30_00-49-18.csv"
 filepath_labels = "Labels_Pitt_2025-02-02_16-27-13.csv"
-totalpath_labels = abspath + embeddingsPath +filepath_labels
-initial_labels = pd.read_csv(totalpath_labels, header=None)
-print(type(initial_labels))
-print(initial_labels)
-
-
-
-if type(initial_labels) != type(pd.Series):
-    initial_labels = initial_labels.iloc[:, 0] # convert to series
-
-labels = initial_labels.to_numpy()
-print(labels)
+filepath_labels = "Labels_Pitt_2025-02-02_23-37-08.csv"
+labels = returnLabels(filepath_labels)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 
+#all_models = list_models()
+#classification_models = list_models(module=torchvision.models)
+#print(classification_models)
 
-all_models = list_models()
-classification_models = list_models(module=torchvision.models)
-print(classification_models)
+filepath_train = "Embeddings_Pitt_train_nCl8_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-13-30.csv"
+filepath_val = "Embeddings_Pitt_val_nCl8_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-13-30.csv"
+filepath_test = "Embeddings_Pitt_test_nCl8_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-13-30.csv"
+filepath_labels_train = "Labels_Pitt_train_2025-02-02_23-13-30.csv"
+filepath_labels_val = "Labels_Pitt_val_2025-02-02_23-13-30.csv"
+filepath_labels_test = "Labels_Pitt_test_2025-02-02_23-13-30.csv"
+X_train = returnData(filepath_train).to_numpy()
+X_val = returnData(filepath_val).to_numpy()
+X_test = returnData(filepath_test).to_numpy()
+Y_train = returnLabels(filepath_labels_train)
+Y_val = returnLabels(filepath_labels_val)
+Y_test = returnLabels(filepath_labels_test)
+val_ratio = 1
 
 def model01_Resnet50(data, labels):
     # Assume `features` is a torch.Tensor with the same dimensions as expected by the ResNet model
@@ -285,7 +390,6 @@ def model03_VangRNN(data, labels):
 
     X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit(X_data, Y_targets)
 
-
     # Normalize the data
     x_scaler = MinMaxScaler()
     x_scaler = StandardScaler()
@@ -437,7 +541,7 @@ def model03_VangRNN(data, labels):
     # batch size of 1 (i.e., updating the model's weights after every single sample)
 
     end_time = time.perf_counter() # Get current time at end
-    rnn_neural_time = end_time - start_time # Substract the time at start and time at end, to find the total run time
+    rnn_neural_time = end_time - start_time # Subtract the time at start and time at end, to find the total run time
     print(f"Training Time: {rnn_neural_time:.6f}")
 
     predictions = model.predict(X_test_normalized)
@@ -449,7 +553,7 @@ def model03_VangRNN(data, labels):
     print(f'Y_test_normalized shape = {Y_test_normalized.shape}')
 
     print(f'predictions = {predictions.T}')
-    print(f'actual lables = {Y_test_normalized}')
+    print(f'actual labels = {Y_test_normalized}')
 
     rand_index_pred = 5
     random_numbers = [random.randint(0, Y_test_normalized.shape[0]-1) for _ in range(5)]
@@ -458,105 +562,32 @@ def model03_VangRNN(data, labels):
         print(f'Y_predictions[i]     = {predictions[i]}')
         print(f'Y_test_normalized[i] = {Y_test_normalized[i]}')
 
-
-
     mae = np.mean(np.abs(Y_test_normalized - predictions))
     mse = np.mean(np.square(Y_test_normalized - predictions))
     loss_evaluate = model.evaluate(X_test_normalized, Y_test_normalized)
 
-    formatted_loss = [f'{num:.6f}' for num in loss_evaluate]
-    formatted_string = ', '.join(formatted_loss)
-    print(f'\nWith formula MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
-    print(Y_test)
+ #   formatted_loss = [f'{num:.6f}' for num in loss_evaluate]
+  #  formatted_string = ', '.join(formatted_loss)
+ #   print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
+    # Format the loss value and the metrics to match their names
+    formatted_loss = f"loss = {loss_evaluate[0]:.6f}"  # Format the loss value
+    formatted_metrics = {metric: f'{num:.6f}' for metric, num in zip(metrics, loss_evaluate[1:])}
 
-    # Example usage:
-    n_bootstrap = 100
-    ci = 95
-    lower_bound, upper_bound, bootstrap_accuracies = compute_confidence_interval(model, X_test_normalized, Y_test_normalized, n_bootstrap, ci)
-    print(f"Accuracy: {np.mean(bootstrap_accuracies) * 100:.1f}% ± {upper_bound - lower_bound:.1f}%")
-#    plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound) # Plot the distribution
+    # Now, print each metric with its corresponding value
+    formatted_string = ', '.join([f"'{metric}' = {formatted_metrics[metric]}" for metric in formatted_metrics])
+
+    print()
+#    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
+    print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
 
     plotTrainValMetrics(history)
 
-
-def plotTrainValMetrics(history):
-    # Access metrics from the history
-    training_accuracy = history.history['accuracy']
-    validation_accuracy = history.history['val_accuracy']
-    training_loss = history.history['loss']
-    validation_loss = history.history['val_loss']
-    training_mae = history.history['mae']
-    validation_mae = history.history['val_mae']
-    training_mse = history.history['mse']
-    validation_mse = history.history['val_mse']
-
-    # Get the number of epochs from the length of the accuracy history
-    epochs = len(training_accuracy)
-
-    # Create a 2x2 grid for subplots
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-
-    # Plot training and validation accuracy
-    axes[0, 0].plot(range(1, epochs + 1), training_accuracy, label='Training Accuracy', color='blue', marker='o')
-    axes[0, 0].plot(range(1, epochs + 1), validation_accuracy, label='Validation Accuracy', color='orange', marker='o')
-    axes[0, 0].set_title('Accuracy vs Epoch')
-    axes[0, 0].set_xlabel('Epochs')
-    axes[0, 0].set_ylabel('Accuracy')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True)
-
-    # Plot training and validation loss
-    axes[0, 1].plot(range(1, epochs + 1), training_loss, label='Training Loss', color='blue', marker='o')
-    axes[0, 1].plot(range(1, epochs + 1), validation_loss, label='Validation Loss', color='orange', marker='o')
-    axes[0, 1].set_title('Loss vs Epoch')
-    axes[0, 1].set_xlabel('Epochs')
-    axes[0, 1].set_ylabel('Loss')
-    axes[0, 1].legend()
-    axes[0, 1].grid(True)
-
-    # Plot training and validation MAE
-    axes[1, 0].plot(range(1, epochs + 1), training_mae, label='Training MAE', color='blue', marker='o')
-    axes[1, 0].plot(range(1, epochs + 1), validation_mae, label='Validation MAE', color='orange', marker='o')
-    axes[1, 0].set_title('MAE vs Epoch')
-    axes[1, 0].set_xlabel('Epochs')
-    axes[1, 0].set_ylabel('MAE')
-    axes[1, 0].legend()
-    axes[1, 0].grid(True)
-
-    # Plot training and validation MSE
-    axes[1, 1].plot(range(1, epochs + 1), training_mse, label='Training MSE', color='blue', marker='o')
-    axes[1, 1].plot(range(1, epochs + 1), validation_mse, label='Validation MSE', color='orange', marker='o')
-    axes[1, 1].set_title('MSE vs Epoch')
-    axes[1, 1].set_xlabel('Epochs')
-    axes[1, 1].set_ylabel('MSE')
-    axes[1, 1].legend()
-    axes[1, 1].grid(True)
-
-    # Adjust layout to prevent overlap
-    plt.tight_layout()
-
-    # Extract the part after "Embeddings_" and remove the extension
-    filename = os.path.basename(filepath_data)  # Get the base filename
-    filename_without_extension = os.path.splitext(filename)[0]  # Remove the extension (.csv)
-    dynamic_filename = filename_without_extension.replace("Embeddings_", "")  # Remove "Embeddings_"
-
-    # Remove the old timestamp (assuming it's always at the end, separated by "_")
-    parts = dynamic_filename.rsplit("_", 1)  # Split into two parts: before timestamp, and timestamp
-    dynamic_filename_without_timestamp = parts[0]  # Keep only the first part
-
-    # Generate the new timestamp
-    current_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    new_dynamic_filename = f"{dynamic_filename_without_timestamp}_{current_timestamp}"
-
-    # Define the new filename for saving the plot
-    save_filename = f"figure_{new_dynamic_filename}.png"  # Save as PNG
-
-    subfolderName = "03_ClassificationResults"
-    filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
-    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
-
-    plt.show()
-
+    # Example usage:
+    n_bootstrap = 1000
+    ci = 95
+  #  lower_bound, upper_bound, bootstrap_accuracies = compute_confidence_interval(model, X_test_normalized, Y_test_normalized, n_bootstrap, ci)
+    print(f"Bootstrap Accuracy: {np.mean(bootstrap_accuracies) * 100:.1f}% ± {upper_bound - lower_bound:.4f}%")
+  #  plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound) # Plot the distribution
 
 #modelResnet50 = model01_Resnet50(data, labels)
 #modelDensenet01 = model02_Densenet201(data, labels)

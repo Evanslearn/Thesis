@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from fileinput import filename
 from os.path import abspath
-from utils00 import returnFilepathToSubfolder
+from utils00 import returnFilepathToSubfolder, doTrainValTestSplit
 
 import numpy as np
 import pandas as pd
@@ -73,6 +73,12 @@ def returnLabels(abspath, filepath_labels):
 def makeLabelsInt(labels):
     # print(labels)
     return labels.map({'C': 0, 'D': 1}).to_numpy()
+
+def create_sequences(token_sequence, window_size, stride):
+#    print(f"Number of overlapping sequences: {len(sequences)}")
+    # Print the sequences
+#    print(sequences)
+    return [token_sequence[i:i + window_size] for i in range(0, len(token_sequence) - window_size + 1, stride)]
 
 
 
@@ -161,6 +167,23 @@ def get_sequence_embedding(token_sequence, model):
 
     return sequence_embedding
 
+def convertBackIntoTokenEmbeddings(token_sequence, sequences, sequence_embeddings):
+    # Step 3: Map back to individual tokens
+    token_embeddings = np.zeros((len(token_sequence), sequence_embeddings.shape[1]))
+    token_counts = np.zeros(len(token_sequence))
+
+    for i, seq in enumerate(sequences):
+        for j, token in enumerate(seq):
+            token_embeddings[i + j] += sequence_embeddings[i]
+            token_counts[i + j] += 1
+    token_embeddings /= token_counts[:, None]
+
+    print(f"Shape of sequences: {len(sequences)}")
+    # Show the result
+    print(f"Shape of sequence embedding: {token_embeddings.shape}")
+    print(f"Sequence embedding:\n{token_embeddings}")
+    return token_embeddings
+
 def SaveEmbeddingsToOutput(embeddings, subfolderName, **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -195,7 +218,7 @@ def SaveEmbeddingsToOutput(embeddings, subfolderName, **kwargs):
 
 # Example Usage
 if __name__ == "__main__":
-  #  abspath = "/home/vang/Downloads/"
+#    abspath = "/home/vang/Downloads/"
     abspath = ""
     abspath = os.getcwd()
     timeSeriesDataPath = "/01_TimeSeriesData/"
@@ -222,6 +245,9 @@ if __name__ == "__main__":
     print(f"Labels shape is = {labels.shape}")
     print(f"Data shape is = {data.shape}\n")
 
+    data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio = doTrainValTestSplit(
+        data, labels)
+
     n_clusters_min = 5 # Was initially 2
     n_clusters_max = 30 # Was initially 10
     # Define the range for the number of clusters
@@ -229,25 +255,21 @@ if __name__ == "__main__":
 
     # Train the tokenizer
     knn_neighbors = 50
-    kmeans_model, knn_model, tokens, n_clusters = train_tokenizer(data, range_n_clusters, knn_neighbors = knn_neighbors)
+    kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(data_train, range_n_clusters, knn_neighbors = knn_neighbors)
 
-    # Create the corpus as a sequence of tokens
-    corpus = tokens.tolist()  # List of tokens representing the time series sequence
-    print(f"Corpus (first 5 tokens): {corpus[:5]}")
-
-    token_sequence = [token for token in corpus]
-    print(f"Token Sequence: {token_sequence[:50]}") # Example of a token sequence
+    # Tokenize Train, Val, Test
+    train_token_sequence = tokens_train.tolist()
+    val_token_sequence = kmeans_model.predict(data_val).tolist() #knn_model.predict(data_val).tolist()
+    test_token_sequence = kmeans_model.predict(data_test).tolist() #knn_model.predict(data_test).tolist()
 
     window_size = 10  # Length of each sequence
     stride = 1  # Step size to slide the window (1 ensures maximum overlap)
 
-    sequences = [token_sequence[i:i + window_size]
-                 for i in range(0, len(token_sequence) - window_size + 1, stride)]
-    print(f"Number of overlapping sequences: {len(sequences)}")
-    # Print the sequences
-    print(sequences)
+    train_sequences = create_sequences(train_token_sequence, window_size, stride)
+    val_sequences = create_sequences(val_token_sequence, window_size, stride)
+    test_sequences = create_sequences(test_token_sequence, window_size, stride)
 
-    tokenized_data = sequences
+#    tokenized_data = sequences
     """    # example of how tokenized_data should look like
         tokenized_data = [
             [1, 2, 3, 4, 5],
@@ -264,39 +286,30 @@ if __name__ == "__main__":
     # loss = "nce" # NEEDs to be IMPLEMENTED FROM SCRATCH
 
     # Train skip-gram model
-    model = train_skipgram(tokenized_data, vocab_size, embedding_dim, window_size_skipgram, epochs)  # , loss)
+    skipgram_model = train_skipgram(train_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)  # , loss)
     print("Skip-gram model trained!")
 
-    # Assume `sequences` is your input data and `model` is the trained skip-gram model
-    time_series_embeddings = get_all_embeddings(model, sequences)
-
     # Step 2: Compute sequence embeddings
-    sequence_embeddings = np.array([get_sequence_embedding(seq, model) for seq in sequences])
+    train_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in train_sequences])
+    val_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in val_sequences])
+    test_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in test_sequences])
+    print(train_embeddings.shape)
+    print(val_embeddings.shape)
+    print(test_embeddings.shape)
+    print(type(train_embeddings))
 
-    # Step 3: Map back to individual tokens
-    token_embeddings = np.zeros((len(token_sequence), sequence_embeddings.shape[1]))
-    token_counts = np.zeros(len(token_sequence))
-
-    for i, seq in enumerate(sequences):
-        for j, token in enumerate(seq):
-            token_embeddings[i + j] += sequence_embeddings[i]
-            token_counts[i + j] += 1
-    token_embeddings /= token_counts[:, None]
-
-    time_series_embeddings = token_embeddings
-
-    print(f"Shape of sequences: {len(sequences)}")
-    # Show the result
-    print(f"Shape of sequence embedding: {time_series_embeddings.shape}")
-    print(f"Sequence embedding:\n{time_series_embeddings}")
+    train_timeseries_embeddings = convertBackIntoTokenEmbeddings(train_token_sequence, train_sequences, train_embeddings)
+    val_timeseries_embeddings = convertBackIntoTokenEmbeddings(val_token_sequence, val_sequences, val_embeddings)
+    test_timeseries_embeddings = convertBackIntoTokenEmbeddings(test_token_sequence, test_sequences, test_embeddings)
+    trainValTest_embeddings = np.vstack([train_timeseries_embeddings, val_timeseries_embeddings, test_timeseries_embeddings])
 
     name_kwargs = {
-        "nCl": {n_clusters},
-        "nN": {knn_neighbors},
-        "winSize": {window_size},
-        "stride": {stride},
-        "winSizeSkip": {window_size_skipgram},
-        "nEmbeddings": {embedding_dim}
+        "nCl": n_clusters,
+        "nN": knn_neighbors,
+        "winSize": window_size,
+        "stride": stride,
+        "winSizeSkip": window_size_skipgram,
+        "nEmbeddings": embedding_dim
     }
     subfoldername = "02_Embeddings"
-    SaveEmbeddingsToOutput(time_series_embeddings, subfoldername, **name_kwargs)
+    SaveEmbeddingsToOutput(trainValTest_embeddings, subfoldername, **name_kwargs)

@@ -23,6 +23,66 @@ from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit
 
+import numpy as np
+from sklearn.metrics import accuracy_score
+from sklearn.utils import resample
+
+
+def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95):
+    """
+    Compute confidence interval for a metric (e.g., accuracy) using bootstrap sampling.
+
+    Parameters:
+    - model: Trained model.
+    - X_test: Test features.
+    - Y_test: True labels for the test data.
+    - n_bootstrap: Number of bootstrap samples.
+    - ci: Desired confidence interval (e.g., 95).
+
+    Returns:
+    - lower_bound: Lower bound of the confidence interval.
+    - upper_bound: Upper bound of the confidence interval.
+    """
+    bootstrap_accuracies = []
+
+    # Perform bootstrap sampling
+    for i in range(n_bootstrap):
+        # Check every 10th iteration
+        if (i + 1) % 10 == 0:
+            print(f"Bootstrap iteration {i + 1} completed")
+
+        # Resample the data with replacement
+        X_resampled, Y_resampled = resample(X_test, Y_test, random_state=None)
+
+        # Predict on the resampled data
+        predictions = model.predict(X_resampled, verbose=0)
+
+        predictions = (predictions > 0.5).astype(int)  # Convert to 0 or 1 based on threshold 0.5
+
+        # Compute the accuracy
+        accuracy = accuracy_score(Y_resampled, predictions)
+
+        # Store the accuracy
+        bootstrap_accuracies.append(accuracy)
+
+    # Compute the lower and upper percentiles for the confidence interval
+    lower_bound = np.percentile(bootstrap_accuracies, (100 - ci) / 2)
+    upper_bound = np.percentile(bootstrap_accuracies, 100 - (100 - ci) / 2)
+
+    return lower_bound, upper_bound, bootstrap_accuracies
+
+def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
+    plt.hist(bootstrap_accuracies, bins=50, color='skyblue', edgecolor='black')
+    plt.axvline(lower_bound, color='red', linestyle='dashed', linewidth=2, label=f'Lower bound: {lower_bound:.2f}')
+    plt.axvline(upper_bound, color='green', linestyle='dashed', linewidth=2, label=f'Upper bound: {upper_bound:.2f}')
+    plt.axvline(np.mean(bootstrap_accuracies), color='orange', linestyle='dashed', linewidth=2, label=f'Mean: {np.mean(bootstrap_accuracies):.2f}')
+    plt.legend()
+    plt.title('Bootstrap Distribution of Accuracy')
+    plt.xlabel('Accuracy')
+    plt.ylabel('Frequency')
+    plt.show()
+
+
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
 embeddingsPath = "/02_Embeddings/"
@@ -33,6 +93,7 @@ filepath_data = "Embeddings_Pitt_2025-01-26_23-29-29.csv"
 filepath_data = "Embeddings_Pitt_2025-01-28_00-39-51.csv"
 filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-01-30_00-49-18.csv"
+filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_16-27-13.csv"
 # filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" --- USE THIS TO TEST WITHOUT SIGNAL2VEC
 totalpath_data = abspath + embeddingsPath + filepath_data
 data = pd.read_csv(totalpath_data, header=None)
@@ -45,6 +106,7 @@ filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
 filepath_labels = "Labels_Pitt_2025-01-30_00-49-18.csv"
+filepath_labels = "Labels_Pitt_2025-02-02_16-27-13.csv"
 totalpath_labels = abspath + embeddingsPath +filepath_labels
 initial_labels = pd.read_csv(totalpath_labels, header=None)
 print(type(initial_labels))
@@ -221,11 +283,7 @@ def model03_VangRNN(data, labels):
     X_data = np.array(data); Y_targets = np.array(labels)
     print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-
-    test_ratio = 0.2
-    val_ratio = 0.25
-    random_state_split = 0
-    X_train, X_val, X_test, Y_train, Y_val, Y_test = doTrainValTestSplit(X_data, Y_targets, test_ratio, val_ratio, random_state_split)
+    X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit(X_data, Y_targets)
 
 
     # Normalize the data
@@ -411,31 +469,71 @@ def model03_VangRNN(data, labels):
     print(f'\nWith formula MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
     print(Y_test)
 
-    plotTrainValAccuracy(history)
+    # Example usage:
+    n_bootstrap = 100
+    ci = 95
+    lower_bound, upper_bound, bootstrap_accuracies = compute_confidence_interval(model, X_test_normalized, Y_test_normalized, n_bootstrap, ci)
+    print(f"Accuracy: {np.mean(bootstrap_accuracies) * 100:.1f}% ± {upper_bound - lower_bound:.1f}%")
+#    plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound) # Plot the distribution
+
+    plotTrainValMetrics(history)
 
 
-def plotTrainValAccuracy(history):
-    # Access accuracy and validation accuracy from the history
+def plotTrainValMetrics(history):
+    # Access metrics from the history
     training_accuracy = history.history['accuracy']
     validation_accuracy = history.history['val_accuracy']
-
-    # Plot the training and validation accuracy
-    plt.figure(figsize=(8, 6))
+    training_loss = history.history['loss']
+    validation_loss = history.history['val_loss']
+    training_mae = history.history['mae']
+    validation_mae = history.history['val_mae']
+    training_mse = history.history['mse']
+    validation_mse = history.history['val_mse']
 
     # Get the number of epochs from the length of the accuracy history
-    epochs = len(history.history['accuracy'])
-    # Plotting both training and validation accuracy
-    plt.plot(range(1, epochs + 1), training_accuracy, label='Training Accuracy', color='blue', marker='o')
-    plt.plot(range(1, epochs + 1), validation_accuracy, label='Validation Accuracy', color='orange', marker='o')
+    epochs = len(training_accuracy)
 
-    # Adding labels and title
-    plt.title('Training and Validation Accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
+    # Create a 2x2 grid for subplots
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-    # Show the plot
-    plt.grid(True)
+    # Plot training and validation accuracy
+    axes[0, 0].plot(range(1, epochs + 1), training_accuracy, label='Training Accuracy', color='blue', marker='o')
+    axes[0, 0].plot(range(1, epochs + 1), validation_accuracy, label='Validation Accuracy', color='orange', marker='o')
+    axes[0, 0].set_title('Accuracy vs Epoch')
+    axes[0, 0].set_xlabel('Epochs')
+    axes[0, 0].set_ylabel('Accuracy')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+
+    # Plot training and validation loss
+    axes[0, 1].plot(range(1, epochs + 1), training_loss, label='Training Loss', color='blue', marker='o')
+    axes[0, 1].plot(range(1, epochs + 1), validation_loss, label='Validation Loss', color='orange', marker='o')
+    axes[0, 1].set_title('Loss vs Epoch')
+    axes[0, 1].set_xlabel('Epochs')
+    axes[0, 1].set_ylabel('Loss')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True)
+
+    # Plot training and validation MAE
+    axes[1, 0].plot(range(1, epochs + 1), training_mae, label='Training MAE', color='blue', marker='o')
+    axes[1, 0].plot(range(1, epochs + 1), validation_mae, label='Validation MAE', color='orange', marker='o')
+    axes[1, 0].set_title('MAE vs Epoch')
+    axes[1, 0].set_xlabel('Epochs')
+    axes[1, 0].set_ylabel('MAE')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True)
+
+    # Plot training and validation MSE
+    axes[1, 1].plot(range(1, epochs + 1), training_mse, label='Training MSE', color='blue', marker='o')
+    axes[1, 1].plot(range(1, epochs + 1), validation_mse, label='Validation MSE', color='orange', marker='o')
+    axes[1, 1].set_title('MSE vs Epoch')
+    axes[1, 1].set_xlabel('Epochs')
+    axes[1, 1].set_ylabel('MSE')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True)
+
+    # Adjust layout to prevent overlap
+    plt.tight_layout()
 
     # Extract the part after "Embeddings_" and remove the extension
     filename = os.path.basename(filepath_data)  # Get the base filename
@@ -455,7 +553,7 @@ def plotTrainValAccuracy(history):
 
     subfolderName = "03_ClassificationResults"
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
-    plt.savefig(filenameFull) # Save the plot using the dynamic filename
+    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
 
     plt.show()
 

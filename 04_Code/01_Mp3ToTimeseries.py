@@ -48,12 +48,12 @@ def extract_time_series_from_conversation(mp3_path, sample_rate=22050, frame_len
     # Return time series and energy
     return time_series
 
-def preprocess_time_series(time_series, desired_length=512):
+def preprocess_time_series(time_series, timeseries_length=512):
     """
     Preprocess a time series for normalization and resampling.
     """
     x_original = np.linspace(0, 1, len(time_series))
-    x_new = np.linspace(0, 1, desired_length)
+    x_new = np.linspace(0, 1, timeseries_length)
     time_series_resampled = np.interp(x_new, x_original, time_series)
   #  print(f"a time series {time_series.shape}")
 

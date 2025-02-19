@@ -23,7 +23,8 @@ from sklearn.utils import resample
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
-from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution
+from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution, \
+    saveTrainingMetricsToFile
 
 
 def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95, random_state = 0):
@@ -355,21 +356,21 @@ def model03_VangRNN(data, labels):
     batch_size = 32
     epochs = 50
 
-    units_simple = [32, 32]
-    units_lstm = 32
+    units_simple = [64, 64] # [32, 32]
+    units_lstm = [32, 32, 32] # 32
     units_gru = 32
     #units_simple = units_lstm = units_gru
-    neurons_dense = 32
+    neurons_dense = 64
 
-    dropout = 0.4
+  #  dropout = 0.4
     activation_dense = 'sigmoid'
 
     LSTM_type = 'YES'
     GRU_type = 'YES'
     SIMPLE_type = 'YES'
-    SIMPLE_layers = 2
-    GRU_layers = 1
-    LSTM_layers = 1
+    SIMPLE_layers = 1 # 2
+    GRU_layers = 0 # 0
+    LSTM_layers = 1 # 1
     Dropout_layers = 1
     BatchNorm_layers = 1
 
@@ -391,7 +392,7 @@ def model03_VangRNN(data, labels):
 
     model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
 
-    if SIMPLE_type == 'YES':
+    if SIMPLE_type == 'YES' and SIMPLE_layers > 0:
       for i in range(0, SIMPLE_layers - 1):
         model.add(tf.keras.layers.SimpleRNN(units_simple[i], return_sequences=True))
       if GRU_type == 'YES' or LSTM_type == 'YES':
@@ -399,7 +400,7 @@ def model03_VangRNN(data, labels):
       else:
         model.add(tf.keras.layers.SimpleRNN(units_simple, return_sequences=False))
 
-    if GRU_type == 'YES':
+    if GRU_type == 'YES' and GRU_layers > 0:
       for i in range(0, GRU_layers - 1):
         model.add(tf.keras.layers.GRU(units_gru, return_sequences=True))
       if LSTM_type == 'YES':
@@ -407,19 +408,20 @@ def model03_VangRNN(data, labels):
       else:
         model.add(tf.keras.layers.GRU(units_gru, return_sequences=False))
 
-    if LSTM_type == 'YES':
+    if LSTM_type == 'YES' and LSTM_layers > 0:
+      i = 0
       for i in range(0, LSTM_layers - 1):
-        model.add(tf.keras.layers.LSTM(units_lstm, return_sequences=True))
-      model.add(tf.keras.layers.LSTM(units_lstm, return_sequences=False))
+        model.add(tf.keras.layers.LSTM(units_lstm[i], return_sequences=True))
+      model.add(tf.keras.layers.LSTM(units_lstm[i], return_sequences=False))
       # return_sequences=True necessary to pass information to next LSTM layer. return_sequences=False typically for final LSTM layer
 
 
 
-    #if Dropout_layers == 1:
-    #  model.add(tf.keras.layers.Dropout(dropout))
+  #  if Dropout_layers == 1:
+ #     model.add(tf.keras.layers.Dropout(dropout))
 
-    #if BatchNorm_layers == 1:
-    #  model.add(tf.keras.layers.BatchNormalization())
+  #  if BatchNorm_layers == 1:
+ #     model.add(tf.keras.layers.BatchNormalization())
 
     if ExtraDense == 'YES':
         for i in range(0, DENSE_layers):
@@ -430,7 +432,7 @@ def model03_VangRNN(data, labels):
     start_time = time.perf_counter() # Get current time at start
 
     # Compile the model
-    learning_rate = 0.05
+    learning_rate = 0.05 #0.035 Pitt?
     momentum = 0.9
     optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
   #  optimizer = Adam(learning_rate=learning_rate)
@@ -482,8 +484,11 @@ def model03_VangRNN(data, labels):
   #  formatted_string = ', '.join(formatted_loss)
  #   print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
     # Format the loss value and the metrics to match their names
-    formatted_loss = f"loss = {loss_evaluate[0]:.6f}"  # Format the loss value
-    formatted_metrics = {metric: f'{num:.6f}' for metric, num in zip(metrics, loss_evaluate[1:])}
+    decimalPoints = 6
+    formatted_loss = f"loss = {loss_evaluate[0]:.{decimalPoints}f}"  # Format the loss value
+    formatted_metrics = {metric: f'{num:.{decimalPoints}f}' for metric, num in zip(metrics, loss_evaluate[1:])}
+    test_metrics = formatted_metrics
+    test_metrics['loss'] = f"{loss_evaluate[0]:.{decimalPoints}f}"
 
     # Now, print each metric with its corresponding value
     formatted_string = ', '.join([f"'{metric}' = {formatted_metrics[metric]}" for metric in formatted_metrics])
@@ -491,8 +496,14 @@ def model03_VangRNN(data, labels):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
+    figureNameParams = f"ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
+    print(f"Shape of predictions: {predictions.shape}")
+    print(f"Shape of Y_test_normalized: {Y_test_normalized.shape}")
 
-    plotTrainValMetrics(history, filepath_data)
+    saveTrainingMetricsToFile(history, model, rnn_neural_time, test_metrics, predictions.flatten(), Y_test_normalized.flatten(), filepath_data, figureNameParams)
+
+    plotTrainValMetrics(history, filepath_data, figureNameParams)
+
 
     # Example usage:
     n_bootstrap = 1000

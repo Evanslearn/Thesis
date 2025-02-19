@@ -1,7 +1,9 @@
 import os
 from datetime import datetime
+import random
 
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
@@ -66,7 +68,7 @@ def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.show()
 
 
-def plotTrainValMetrics(history, filepath_data):
+def plotTrainValMetrics(history, filepath_data, figureNameParams):
     # Access metrics from the history
     training_accuracy = history.history['accuracy']
     validation_accuracy = history.history['val_accuracy']
@@ -122,6 +124,14 @@ def plotTrainValMetrics(history, filepath_data):
     # Adjust layout to prevent overlap
     plt.tight_layout()
 
+    filenameFull = returnFileNameToSave(filepath_data, figureNameParams)
+
+    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
+    print(filenameFull)
+
+    plt.show()
+
+def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension
     filename = os.path.basename(filepath_data)  # Get the base filename
     filename_without_extension = os.path.splitext(filename)[0]  # Remove the extension (.csv)
@@ -133,13 +143,57 @@ def plotTrainValMetrics(history, filepath_data):
 
     # Generate the new timestamp
     current_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    new_dynamic_filename = f"{dynamic_filename_without_timestamp}_{current_timestamp}"
+    new_dynamic_filename = f"{dynamic_filename_without_timestamp}_{fileNameParams}_{current_timestamp}"
 
+    if imageflag == "YES":
+        fileExtension = "png"
+    else:
+        fileExtension = "csv"
     # Define the new filename for saving the plot
-    save_filename = f"figure_{new_dynamic_filename}.png"  # Save as PNG
+    save_filename = f"figure_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
 
     subfolderName = "03_ClassificationResults"
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
-    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
+    return filenameFull
 
-    plt.show()
+def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams):
+    filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
+
+    # Convert history.history (dictionary) to DataFrame
+    df_history = pd.DataFrame(history.history)
+    df_history.insert(0, "Epoch", range(1, len(df_history) + 1)) # Add epoch numbers
+
+    # Convert test results to DataFrame
+    df_results = pd.DataFrame({
+        "Prediction": predictions,
+        "Actual Label": actual_labels
+    })
+
+    # Save everything into a single CSV file
+    with open(filenameFull, "w") as f:
+        f.write("Training History:\n")
+        df_history.to_csv(f, index=False)
+
+        f.write("\nModel Architecture:\n")
+        model.summary(print_fn=lambda x: f.write(x + "\n"))
+
+        f.write("\nTraining Time:\n")
+        f.write(f"{training_time:.6f} seconds\n")
+
+        f.write("\nTest Set Metrics:\n")
+        for metric_name, metric_value in test_metrics.items():
+            f.write(f"{metric_name},{metric_value}\n")
+
+        f.write("\nPredictions vs Actual Labels:\n")
+        df_results.to_csv(f, index=False)
+
+        f.write("\nRandom Sample Comparisons:\n")
+        rand_index_pred = 5
+        random_numbers = [random.randint(0, actual_labels.shape[0] - 1) for _ in range(5)]
+        for i in random_numbers:
+            f.write(f"For i = {i}, we have:\n")
+            f.write(f"Y_predictions[i]     = {predictions[i]}\n")
+            f.write(f"Y_test_normalized[i] = {actual_labels[i]}\n\n")
+
+    print(f"All results saved to {filenameFull}!")
+    return filenameFull

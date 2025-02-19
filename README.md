@@ -41,6 +41,7 @@
 * made an attempt to use stratification, but didn't make it yet. There are some considerations here, mostly about making sure we use the same instances between steps 2 and 3
 
 # TO DO
+* STRATIFICATION
 * Experiment with sampling of the mp3 files?
 * Experiment with windowing, and maybe use a larger window that 5 that I have used?
 * Experiment with Embedding feature count?

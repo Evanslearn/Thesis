@@ -40,6 +40,9 @@
 * Also tried 70-15-15 split instead of 70-10-20
 * made an attempt to use stratification, but didn't make it yet. There are some considerations here, mostly about making sure we use the same instances between steps 2 and 3
 
+## 2025/02/19
+* Experimenting with parameters, trying to find a good train+val performance
+
 # TO DO
 * STRATIFICATION
 * Experiment with sampling of the mp3 files?

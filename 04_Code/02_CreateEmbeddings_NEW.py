@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from fileinput import filename
 from os.path import abspath
-from utils00 import returnFilepathToSubfolder, doTrainValTestSplit
+from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, makeLabelsInt
 
 import numpy as np
 import pandas as pd
@@ -69,10 +69,6 @@ def returnLabels(abspath, filepath_labels):
     print(type(labels))
 
     return labels
-
-def makeLabelsInt(labels):
-    # print(labels)
-    return labels.map({'C': 0, 'D': 1}).to_numpy()
 
 def create_sequences(token_sequence, window_size, stride):
 #    print(f"Number of overlapping sequences: {len(sequences)}")

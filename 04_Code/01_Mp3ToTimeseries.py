@@ -170,8 +170,6 @@ if __name__ == "__main__":
                 time_series_data.append(data)  # Store the result
                 time_series_sampleRate.append(sample_rate)
 
-
-
                 # Get the length of the time series data
                 length = len(data)
 
@@ -185,8 +183,6 @@ if __name__ == "__main__":
     # Print the list of shapes
     print(shapes)
 
-
-
     # Step 2: Find maximum length
     max_length = max([len(data) for data in time_series_data])
     print(f"Maximum Length of Time Series: {max_length}")
@@ -198,8 +194,6 @@ if __name__ == "__main__":
         padded_data.append(pad_or_truncate(data, max_length))
         csv_data_padded_ALL.append([labels[i], time_series_sampleRate[i], len(padded_data)] + list(padded_data))
     print(type(padded_data)); print(type(csv_data_padded_ALL))
-
-
 
     print(f"\n\n\nFile Path = file_path_base + file_path_specific")
     print(f"{file_path} = {file_path_base} + {file_path_specific}")
@@ -223,9 +217,6 @@ if __name__ == "__main__":
     if flagCSV == "Yes":
         createFileCsv_simple(padded_data, filenameVars, subfolderName)
         # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
-
-
-
 
     categories = {
         "Control": os.path.join(file_path_base, "Pitt/Control/cookie"),

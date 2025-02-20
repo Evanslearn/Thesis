@@ -24,7 +24,7 @@ from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution, \
-    saveTrainingMetricsToFile
+    saveTrainingMetricsToFile, makeLabelsInt
 
 
 def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95, random_state = 0):
@@ -84,7 +84,7 @@ def returnLabels(filepath_label):
         initial_labels = initial_labels.iloc[:, 0]  # convert to series
 
     labels = initial_labels.to_numpy()
-    print(labels)
+  #  print(labels)
     return labels
 
 
@@ -98,6 +98,16 @@ def returnTrainValTest(path_train, path_val, path_test, path_train_labels, path_
 
     return X_train, X_val, X_test
 
+def returnDataLabelsWhenWithoutSignal2Vec(data, labels):
+    data = data.dropna().reset_index(drop=True)
+    # Ensure labels align with the updated data
+    if type(labels) != type(pd.Series):
+        labels_s = pd.Series(labels)
+      #  labels_s = labels_s.iloc[:, 0]  # convert to series
+    labels_s = labels_s[data.index]
+    labels_s = labels_s.reset_index(drop=True)
+
+    return data.to_numpy(), labels_s
 
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
@@ -111,24 +121,22 @@ filepath_data = "Embeddings_Pitt_2025-01-29_22-14-49.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-01-30_00-49-18.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_16-27-13.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-37-08.csv"
-# filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" --- USE THIS TO TEST WITHOUT SIGNAL2VEC
+#filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-20_20-22-02.csv"
+#timeSeriesDataPath = "/01_TimeSeriesData/"; embeddingsPath = timeSeriesDataPath; filepath_data = f"Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" #USE THIS TO TEST WITHOUT SIGNAL2VEC
 data = returnData(filepath_data)
 
-# Drop NaN rows from data, # Reset indices after dropping rows
-# data = data.dropna().reset_index(drop=True)
-
+embeddingsPath = "/02_Embeddings/"
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Labels_Pitt_2025-01-21_02-05-52.csv"
 filepath_labels = "Labels_Pitt_2025-01-26_23-29-29.csv"
 filepath_labels = "Labels_Pitt_2025-01-30_00-49-18.csv"
 filepath_labels = "Labels_Pitt_2025-02-02_16-27-13.csv"
 filepath_labels = "Labels_Pitt_2025-02-02_23-37-08.csv"
+filepath_labels = "Labels_Pitt_2025-02-20_20-22-02.csv"
 labels = returnLabels(filepath_labels)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 
-#all_models = list_models()
-#classification_models = list_models(module=torchvision.models)
-#print(classification_models)
+#data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
 
 filepath_train = "Embeddings_Pitt_train_nCl8_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-13-30.csv"
 filepath_val = "Embeddings_Pitt_val_nCl8_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-02_23-13-30.csv"
@@ -283,7 +291,7 @@ def model02_Densenet201(data, labels):
 
     return model
 
-def model03_VangRNN(data, labels):
+def model03_VangRNN(data, labels, learning_rate = 0.035):
     def f1_score(y_true, y_pred):
         precision = tf.keras.metrics.Precision()
         recall = tf.keras.metrics.Recall()
@@ -356,7 +364,7 @@ def model03_VangRNN(data, labels):
     batch_size = 32
     epochs = 50
 
-    units_simple = [64, 64] # [32, 32]
+    units_simple = [32, 32] # [32, 32]
     units_lstm = [32, 32, 32] # 32
     units_gru = 32
     #units_simple = units_lstm = units_gru
@@ -368,7 +376,7 @@ def model03_VangRNN(data, labels):
     LSTM_type = 'YES'
     GRU_type = 'YES'
     SIMPLE_type = 'YES'
-    SIMPLE_layers = 1 # 2
+    SIMPLE_layers = 2 # 2
     GRU_layers = 0 # 0
     LSTM_layers = 1 # 1
     Dropout_layers = 1
@@ -432,7 +440,7 @@ def model03_VangRNN(data, labels):
     start_time = time.perf_counter() # Get current time at start
 
     # Compile the model
-    learning_rate = 0.05 #0.035 Pitt?
+  #  learning_rate = 0.007 #0.035 Pitt?
     momentum = 0.9
     optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
   #  optimizer = Adam(learning_rate=learning_rate)
@@ -514,4 +522,9 @@ def model03_VangRNN(data, labels):
 
 #modelResnet50 = model01_Resnet50(data, labels)
 #modelDensenet01 = model02_Densenet201(data, labels)
-modelVangRNN = model03_VangRNN(data, labels)
+lr_min = 0.035 # 0.001
+lr_max = 0.1 # 0.01
+lr_distinct = 1 # 10
+learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
+for lr in learning_rate:
+    modelVangRNN = model03_VangRNN(data, labels, learning_rate = lr)

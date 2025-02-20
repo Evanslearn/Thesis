@@ -7,6 +7,10 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
+def makeLabelsInt(labels):
+    # print(labels)
+    return labels.map({'C': 0, 'D': 1}).to_numpy()
+
 def returnFilepathToSubfolder(filename, subfolderName):
 
     # Get the current directory of script execution
@@ -129,7 +133,7 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams):
     plt.savefig(filenameFull)  # Save the plot using the dynamic filename
     print(filenameFull)
 
-    plt.show()
+   # plt.show()
 
 def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension

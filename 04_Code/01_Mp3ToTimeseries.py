@@ -30,8 +30,9 @@ def extract_speaker_segments(audio, frame_length=2048, hop_length=512, threshold
 
     # Filter based on some threshold for speech
     speech_segments = rms > threshold  # Boolean array for active speech regions
+    speech_detected = np.any(speech_segments)  # Check if any segment has speech
 
-    return speech_segments, rms
+    return speech_segments, rms, speech_detected
 
 def extract_time_series_from_conversation(mp3_path, sample_rate=22050, frame_length=2048, hop_length=512, threshold = 0.02):
     """
@@ -40,13 +41,13 @@ def extract_time_series_from_conversation(mp3_path, sample_rate=22050, frame_len
     audio, sr = loadMp3AndConvertToTimeseries(mp3_path, sr=sample_rate)
 
     # Extract speech regions
-    speech_segments, rms = extract_speaker_segments(audio, frame_length, hop_length, threshold)
+    speech_segments, rms, speech_detected = extract_speaker_segments(audio, frame_length, hop_length, threshold)
 
     # Create time series based on RMS energy
     time_series = rms[speech_segments]  # Filter only active regions
 
     # Return time series and energy
-    return time_series
+    return time_series, speech_detected
 
 def preprocess_time_series(time_series, timeseries_length=512):
     """
@@ -118,10 +119,7 @@ def createFileCsv_simple(padded_data, subfolderName, filenameVars, formatted_dat
     print(f"CSV Writer Time: {csv_writer_time:.2f} seconds")
     print(f"Data written to csv file - {filenameFull}")
 
-
-# Main Workflow
-if __name__ == "__main__":
-
+def logicForLu():
     # Example for 1 specific file
     file_path = "G:/My Drive/00_AI Master/3 Διπλωματική/05_Data/Lu/Control/F22.mp3"
     data, sample_rate = loadMp3AndConvertToTimeseries(file_path)
@@ -218,6 +216,22 @@ if __name__ == "__main__":
         createFileCsv_simple(padded_data, filenameVars, subfolderName)
         # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
 
+def printLabelCounts(labels):
+    print(f"Length of labels = {len(labels)}")
+    print(f"Counts of Control = {labels.count('C')}")
+    print(f"Counts of Dementia = {labels.count('D')}")
+
+# Main Workflow
+if __name__ == "__main__":
+
+#    file_path_base = "G:/My Drive/00_AI Master/3 Διπλωματική/05_Data/"
+#    print(file_path_base)
+    file_path_base = os.getcwd() + "../05_Data"
+    file_path_base = os.path.abspath(os.path.join(os.getcwd(), "..", "05_Data"))
+    print(file_path_base)
+
+    subfolderName = '01_TimeSeriesData'
+
     categories = {
         "Control": os.path.join(file_path_base, "Pitt/Control/cookie"),
         "Alzheimer": os.path.join(file_path_base, "Pitt/Dementia/cookie")
@@ -251,37 +265,59 @@ if __name__ == "__main__":
                 files.append(filename)
                 labels.append(label)  # Append the appropriate label (C or D)
 
-                if len(labels) % 10 == 0:
-                    print(f"   --- Processing file number ---   {len(labels)}")
+         #       if len(labels) % 40 == 0:                    print(f"   --- Processing file number ---   {len(labels)}")
                 file_path_mp3 = join(dirpath, filename)  # Full path to the MP3 file
+    printLabelCounts(labels)
 
     frame_length = 2048
     hop_length = 512
     threshold = 0.02
 
     filenameVars = f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
-    createFileLabels(labels, subfolderName, filenameVars, formatted_datetime)
 
     time_series_processed_ALL = []
+    valid_files = []  # Track filenames that are kept
+    valid_labels = []  # Store labels for the kept files
+    files_without_speech = []  # Track files with no speech detected
     for category, folder in categories.items():
         mp3_files = [os.path.join(folder, file) for file in os.listdir(folder) if file.endswith(".mp3")]
 
         start_time = time.time()
         for idx, mp3_file in enumerate(mp3_files):
-            if idx % 10 == 0:
+            if idx % 20 == 0:
                 print(f"Row number = {idx}")
             # Extract time series from conversation
-            time_series = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
+            time_series, speech_detected = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
+    #        print(category, folder)
+
+            if not speech_detected:
+                files_without_speech.append(mp3_file)  # Log the file if no speech is detected
 
             # Preprocess and generate time series
             if len(time_series) > 0:
-     #           time_series_processed = preprocess_time_series(time_series)
                 time_series_processed_ALL.append(preprocess_time_series(time_series))
-                #print(time_series_processed)
+                valid_files.append(mp3_file)
+
+                # Find the correct label based on the filename
+     #           if mp3_file.startswith(folder):
+                valid_labels.append("C" if category == "Control" else "D")  # Assign label correctly
 
     total_timeseries_time = time.time() - start_time
     print(f"Total timeseries time: {total_timeseries_time:.2f} seconds")
 
+
+
+    # Print or save the list of problematic files
+    if files_without_speech:
+        print(f"Files with no detected speech: {len(files_without_speech)}")
+        for file in files_without_speech:
+            print(f"  - {file}")
+
+    # Now, filter labels based on valid_files
+    createFileLabels(valid_labels, subfolderName, filenameVars, formatted_datetime)
+    printLabelCounts(valid_labels)
+
+    assert len(time_series_processed_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
     output_filename = os.path.join(file_path_specific, f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
 
     createFileCsv_simple(time_series_processed_ALL, subfolderName, filenameVars)

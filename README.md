@@ -43,6 +43,9 @@
 ## 2025/02/19
 * Experimenting with parameters, trying to find a good train+val performance
 
+## 2025/02/22
+* Commited a fix, which implements correct pairing of remianing data with the labels, during step 1, due to removal of data depending on threshold
+
 # TO DO
 * STRATIFICATION
 * Experiment with sampling of the mp3 files?

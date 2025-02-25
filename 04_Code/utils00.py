@@ -5,6 +5,7 @@ import random
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from pandas._testing import iloc
 from sklearn.model_selection import train_test_split
 
 def makeLabelsInt(labels):
@@ -27,10 +28,10 @@ def returnFilepathToSubfolder(filename, subfolderName):
 
     return file_path
 
-def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+def doTrainValTestSplit222222(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
     # split into train + (val_test) sets
     X_train, X_test_val, Y_train, Y_test_val = train_test_split(X_data, Y_targets, test_size=test_val_ratio,
-                                                                random_state=random_state)#, stratify=Y_targets)
+                                                                random_state=random_state, stratify=Y_targets)
 
     val_ratio = test_val_ratio * valRatio_fromTestVal
     print(
@@ -38,25 +39,53 @@ def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTe
     of the val-test data, translates to {val_ratio * 100}% of the total data.''')
     # split into val + test sets
     X_test, X_val, Y_test, Y_val = train_test_split(X_test_val, Y_test_val, test_size=valRatio_fromTestVal,
-                                                      random_state=random_state)#, stratify=Y_test_val)
+                                                      random_state=random_state, stratify=Y_test_val)
 
     print(f'train - {Y_train}, \nval - {Y_val},\ntest {Y_test}')
 
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
 
-    # 2. Split into train and (test + val) sets, while stratifying by Y_targets
-#    train_indices, test_val_indices = train_test_split(indices, test_size=test_val_ratio, random_state=random_state, stratify=Y_targets)
+def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+    # Get indices for tracking
+    indices = np.arange(len(X_data))  # Get original indices
 
-    # 3. Further split the test_val_indices into validation and test sets
-#    val_indices, test_indices = train_test_split(test_val_indices, test_size=valRatio_fromTestVal, random_state=random_state, stratify=Y_targets[test_val_indices])
+    # First split: Train vs (Test + Val) using stratification
+ #  train_indices, test_val_indices, Y_train, Y_test_val = train_test_split(indices, Y_targets, test_size=test_val_ratio,
+ #                                                                           random_state=random_state, stratify=Y_targets)
 
-    # 4. Use the saved indices to select the corresponding data for each split
-  #  X_train = X_data[train_indices]
-   # Y_train = Y_targets[train_indices]
-  #  X_val = X_data[val_indices]
-  #  Y_val = Y_targets[val_indices]
- #   X_test = X_data[test_indices]
- #   Y_test = Y_targets[test_indices]
+    #   First     split: Train     vs(Test + Val)
+    X_train, X_test_val, Y_train, Y_test_val = train_test_split(X_data, Y_targets, test_size=test_val_ratio,
+                                                                random_state=random_state, stratify=Y_targets)
+    val_ratio = test_val_ratio * valRatio_fromTestVal
+    print(
+        f'''We have used {test_val_ratio * 100}% of the data for the test+val set. So now, the val_ratio = {valRatio_fromTestVal * 100}%
+    of the val-test data, translates to {val_ratio * 100}% of the total data.''')
+    # Second split: Test vs Val using stratification
+#    test_indices, val_indices, Y_test, Y_val = train_test_split(test_val_indices, Y_test_val, test_size=valRatio_fromTestVal,
+#                                                                random_state=random_state, stratify=Y_test_val)
+  #  print(train_indices); print(val_indices); print(test_indices)
+    # Extract corresponding X splits using stored indices
+  #  X_train = X_data[train_indices, :]
+ #   X_train = X_data.iloc[train_indices, :]
+   # X_val = X_data[val_indices, :]
+ #   X_val = X_data.iloc[val_indices, :]
+ #   X_test = X_data[test_indices, :]
+#    X_test = X_data.iloc[test_indices, :]
+
+    # Print for verification
+  #  print(f"Train: {len(train_indices)}, Test: {len(test_indices)}, Val: {len(val_indices)}")
+
+
+
+    # Second split: Test vs Val
+    X_test, X_val, Y_test, Y_val = train_test_split(X_test_val, Y_test_val, test_size=valRatio_fromTestVal,
+                                                    random_state=random_state, stratify=Y_test_val)
+
+    print(f"Train: {len(Y_train)}, Test: {len(Y_test)}, Val: {len(Y_val)}")
+
+    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
+
+  #  return train_indices, val_indices, test_indices, X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
 
 
 def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
@@ -72,16 +101,12 @@ def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.show()
 
 
-def plotTrainValMetrics(history, filepath_data, figureNameParams):
+def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression = "NO"):
     # Access metrics from the history
     training_accuracy = history.history['accuracy']
     validation_accuracy = history.history['val_accuracy']
     training_loss = history.history['loss']
     validation_loss = history.history['val_loss']
-    training_mae = history.history['mae']
-    validation_mae = history.history['val_mae']
-    training_mse = history.history['mse']
-    validation_mse = history.history['val_mse']
 
     # Get the number of epochs from the length of the accuracy history
     epochs = len(training_accuracy)
@@ -107,23 +132,65 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams):
     axes[0, 1].legend()
     axes[0, 1].grid(True)
 
-    # Plot training and validation MAE
-    axes[1, 0].plot(range(1, epochs + 1), training_mae, label='Training MAE', color='blue', marker='o')
-    axes[1, 0].plot(range(1, epochs + 1), validation_mae, label='Validation MAE', color='orange', marker='o')
-    axes[1, 0].set_title('MAE vs Epoch')
-    axes[1, 0].set_xlabel('Epochs')
-    axes[1, 0].set_ylabel('MAE')
-    axes[1, 0].legend()
-    axes[1, 0].grid(True)
+    # Get all available metric names
+    metric_keys = list(history.history.keys())
 
-    # Plot training and validation MSE
-    axes[1, 1].plot(range(1, epochs + 1), training_mse, label='Training MSE', color='blue', marker='o')
-    axes[1, 1].plot(range(1, epochs + 1), validation_mse, label='Validation MSE', color='orange', marker='o')
-    axes[1, 1].set_title('MSE vs Epoch')
-    axes[1, 1].set_xlabel('Epochs')
-    axes[1, 1].set_ylabel('MSE')
-    axes[1, 1].legend()
-    axes[1, 1].grid(True)
+    # Find keys dynamically (handles variations like precision_1, precision_2, etc.)
+    precision_key = next((k for k in metric_keys if 'precision' in k.lower()), None)
+    recall_key = next((k for k in metric_keys if 'recall' in k.lower()), None)
+
+
+    if flagRegression == "NO":
+        # Extract metrics dynamically
+        if precision_key and recall_key:
+            training_precision = history.history[precision_key]
+            validation_precision = history.history[f'val_{precision_key}']
+            training_recall = history.history[recall_key]
+            validation_recall = history.history[f'val_{recall_key}']
+        else:
+            training_precision = history.history['precision']
+            validation_precision = history.history['val_precision']
+            training_recall = history.history['recall']
+            validation_recall = history.history['val_recall']
+
+        axes[1, 0].plot(range(1, epochs + 1), training_precision, label='Training Precision', color='blue', marker='o')
+        axes[1, 0].plot(range(1, epochs + 1), validation_precision, label='Validation Precision', color='orange', marker='o')
+        axes[1, 0].set_title('Precision vs Epoch')
+        axes[1, 0].set_xlabel('Epochs')
+        axes[1, 0].set_ylabel('Precision')
+        axes[1, 0].legend()
+        axes[1, 0].grid(True)
+
+        # Plot training and validation MSE
+        axes[1, 1].plot(range(1, epochs + 1), training_recall, label='Training Recall', color='blue', marker='o')
+        axes[1, 1].plot(range(1, epochs + 1), validation_recall, label='Validation Recall', color='orange', marker='o')
+        axes[1, 1].set_title('Recall vs Epoch')
+        axes[1, 1].set_xlabel('Epochs')
+        axes[1, 1].set_ylabel('Recall')
+        axes[1, 1].legend()
+        axes[1, 1].grid(True)
+    else:
+        training_mae = history.history['mae']
+        validation_mae = history.history['val_mae']
+        training_mse = history.history['mse']
+        validation_mse = history.history['val_mse']
+        # Plot training and validation MAE
+        axes[1, 0].plot(range(1, epochs + 1), training_mae, label='Training MAE', color='blue', marker='o')
+        axes[1, 0].plot(range(1, epochs + 1), validation_mae, label='Validation MAE', color='orange', marker='o')
+        axes[1, 0].set_title('MAE vs Epoch')
+        axes[1, 0].set_xlabel('Epochs')
+        axes[1, 0].set_ylabel('MAE')
+        axes[1, 0].legend()
+        axes[1, 0].grid(True)
+
+        # Plot training and validation MSE
+        axes[1, 1].plot(range(1, epochs + 1), training_mse, label='Training MSE', color='blue', marker='o')
+        axes[1, 1].plot(range(1, epochs + 1), validation_mse, label='Validation MSE', color='orange', marker='o')
+        axes[1, 1].set_title('MSE vs Epoch')
+        axes[1, 1].set_xlabel('Epochs')
+        axes[1, 1].set_ylabel('MSE')
+        axes[1, 1].legend()
+        axes[1, 1].grid(True)
 
     # Adjust layout to prevent overlap
     plt.tight_layout()
@@ -133,7 +200,7 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams):
     plt.savefig(filenameFull)  # Save the plot using the dynamic filename
     print(filenameFull)
 
-   # plt.show()
+    plt.show()
 
 def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension
@@ -160,7 +227,7 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams):
+def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams, ratio_0_to_1_ALL):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
     # Convert history.history (dictionary) to DataFrame
@@ -177,6 +244,10 @@ def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predi
     with open(filenameFull, "w") as f:
         f.write("Training History:\n")
         df_history.to_csv(f, index=False)
+
+        f.write("\nRatio of 0s/1s Train-Val-Test:\n")
+        for i in range(0,len(ratio_0_to_1_ALL)):
+            f.write(f"{ratio_0_to_1_ALL[i]}\n")
 
         f.write("\nModel Architecture:\n")
         model.summary(print_fn=lambda x: f.write(x + "\n"))

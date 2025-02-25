@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from fileinput import filename
 from os.path import abspath
-from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, makeLabelsInt
+from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, makeLabelsInt, doTrainValTestSplit222222
 
 import numpy as np
 import pandas as pd
@@ -64,7 +64,7 @@ def returnLabels(abspath, filepath_labels):
   #  labels = pd.read_csv(totalpath_labels, header=None)[:][0]
 
     labels = pd.read_csv(totalpath_labels, header=None)
-    if type(labels) != type(pd.Series):
+    if not isinstance(labels, pd.Series):
         labels = labels.iloc[:, 0]  # convert to series
     print(type(labels))
 
@@ -194,7 +194,7 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, setType="NO", **kw
     else:
         caseTypeString = f"_{caseType}_"
 
-    filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in name_kwargs.items()).rstrip("_")
+    filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
 
     filename = "Embeddings" + caseTypeString + filename_variables + "_" + formatted_datetime + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
@@ -203,11 +203,19 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, setType="NO", **kw
     df.to_csv(filenameFull, index=False, header=False)
 
     df_labels = pd.DataFrame(labels)
-    filename = "Labels" + caseTypeString + formatted_datetime + ".csv"
+    filename = "Labels" + caseTypeString + filename_variables + "_" + formatted_datetime + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     df_labels.to_csv(filenameFull, index=False, header=False)
-    pass;
+    return
 
+def returnDatasplit():
+    global val_ratio
+    X_data = np.array(data);
+    Y_targets = np.array(labels)
+    print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
+
+    X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
+    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
 
 # Example Usage
 if __name__ == "__main__":
@@ -218,10 +226,12 @@ if __name__ == "__main__":
     folderPath = abspath + timeSeriesDataPath
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
     data = returnData(folderPath, filepath_data)
 
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
     initial_labels = returnLabels(folderPath, filepath_labels)
 
     print(f"----- BEFORE DROPPING NA -----")
@@ -238,9 +248,25 @@ if __name__ == "__main__":
     print(f"Labels shape is = {labels.shape}")
     print(f"Data shape is = {data.shape}\n")
 
-    data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio = doTrainValTestSplit(
-        data, labels)
+  #  train_indices, val_indices, test_indices, data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio = doTrainValTestSplit(
+  #      data, labels)
+    data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio = doTrainValTestSplit(data, labels)
+    X_data = np.array(data); Y_targets = np.array(labels)
+    print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
+ #   X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
 
+ #   X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = returnDatasplit()
+
+ #   print(f"Train set: {X_train.shape}, Val set: {X_val.shape}, Test set: {X_test.shape}")
+ #   print(f"Train labels: {len(Y_train)}, Val labels: {len(Y_val)}, Test labels: {len(Y_test)}")
+ #   print(f"Unique train labels: {np.unique(Y_train, return_counts=True)}")
+ #   print(f"Unique val labels: {np.unique(Y_val, return_counts=True)}")
+ #   print(f"Unique test labels: {np.unique(Y_test, return_counts=True)}")
+
+    print(f"data shape = {data.shape}")
+    print(f"data_train shape = {data_train.shape}")
+    print(f"data_val shape = {data_val.shape}")
+    print(f"data_test shape = {data_test.shape}")
     n_clusters_min = 5 # Was initially 2
     n_clusters_max = 30 # Was initially 10
     # Define the range for the number of clusters
@@ -252,8 +278,8 @@ if __name__ == "__main__":
 
     # Tokenize Train, Val, Test
     train_token_sequence = tokens_train.tolist()
-    val_token_sequence = kmeans_model.predict(data_val).tolist() #knn_model.predict(data_val).tolist()
-    test_token_sequence = kmeans_model.predict(data_test).tolist() #knn_model.predict(data_test).tolist()
+    val_token_sequence = kmeans_model.predict(data_val).tolist()
+    test_token_sequence = kmeans_model.predict(data_test).tolist()
 
     window_size = 10  # Length of each sequence
     stride = 1  # Step size to slide the window (1 ensures maximum overlap)
@@ -306,6 +332,34 @@ if __name__ == "__main__":
     }
     subfoldername = "02_Embeddings"
     SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, **name_kwargs)
- #   SaveEmbeddingsToOutput(train_timeseries_embeddings, labels_train, "train", subfoldername, **name_kwargs)
- #   SaveEmbeddingsToOutput(val_timeseries_embeddings, labels_val,"val", subfoldername, **name_kwargs)
- #   SaveEmbeddingsToOutput(test_timeseries_embeddings, labels_test,"test", subfoldername, **name_kwargs)
+
+    name_kwargs_train = {
+        "train": "Set",
+        "nCl": n_clusters,
+        "nN": knn_neighbors,
+        "winSize": window_size,
+        "stride": stride,
+        "winSizeSkip": window_size_skipgram,
+        "nEmbeddings": embedding_dim
+    }
+    name_kwargs_val = {
+        "val": "Set",
+        "nCl": n_clusters,
+        "nN": knn_neighbors,
+        "winSize": window_size,
+        "stride": stride,
+        "winSizeSkip": window_size_skipgram,
+        "nEmbeddings": embedding_dim
+    }
+    name_kwargs_test = {
+        "test": "Set",
+        "nCl": n_clusters,
+        "nN": knn_neighbors,
+        "winSize": window_size,
+        "stride": stride,
+        "winSizeSkip": window_size_skipgram,
+        "nEmbeddings": embedding_dim
+    }
+    SaveEmbeddingsToOutput(train_timeseries_embeddings, labels_train, subfoldername, **name_kwargs_train)
+    SaveEmbeddingsToOutput(val_timeseries_embeddings, labels_val, subfoldername, **name_kwargs_val)
+    SaveEmbeddingsToOutput(test_timeseries_embeddings, labels_test, subfoldername, **name_kwargs_test)

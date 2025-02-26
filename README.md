@@ -46,6 +46,9 @@
 ## 2025/02/22
 * Commited a fix, which implements correct pairing of remianing data with the labels, during step 1, due to removal of data depending on threshold
 
+## 2025/02/26
+* code cleanup + created another 03 file, to separate some models currently unused. still working on stratification and correct train-val-test split
+
 # TO DO
 * STRATIFICATION
 * Experiment with sampling of the mp3 files?

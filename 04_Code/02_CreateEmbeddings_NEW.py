@@ -3,6 +3,11 @@ import time
 from datetime import datetime
 from fileinput import filename
 from os.path import abspath
+
+from matplotlib import pyplot as plt
+from sklearn.manifold import TSNE
+import seaborn as sns
+
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, makeLabelsInt, doTrainValTestSplit222222
 
 import numpy as np
@@ -13,8 +18,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Dense, Flatten
 from tensorflow.keras.preprocessing.sequence import skipgrams
-from tensorflow.keras.preprocessing.text import Tokenizer
-from sklearn.model_selection import train_test_split
 
 
 def find_optimal_clusters(data, range_n_clusters):
@@ -35,7 +38,6 @@ def find_optimal_clusters(data, range_n_clusters):
 
     return best_n_clusters, best_model
 
-
 def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     """Train a tokenizer using K-means and k-NN."""
     # Step 1: Find optimal number of clusters
@@ -52,18 +54,13 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
 
     return kmeans, knn, tokens, n_clusters
 
-def returnData(abspath, filepath_data):
-    totalpath_data = abspath + filepath_data
-    data = pd.read_csv(totalpath_data, header=None)
-    return data
+def readAndReturnCsvAsDataframe(abspath, filepath):
+    totalpath = abspath + filepath
+    return pd.read_csv(totalpath, header=None)
 
 def returnLabels(abspath, filepath_labels):
-    totalpath_labels = abspath + filepath_labels
+    labels = readAndReturnCsvAsDataframe(abspath, filepath_labels)
 
-    # This was needed when labels were the first column of my csv
-  #  labels = pd.read_csv(totalpath_labels, header=None)[:][0]
-
-    labels = pd.read_csv(totalpath_labels, header=None)
     if not isinstance(labels, pd.Series):
         labels = labels.iloc[:, 0]  # convert to series
     print(type(labels))
@@ -71,12 +68,8 @@ def returnLabels(abspath, filepath_labels):
     return labels
 
 def create_sequences(token_sequence, window_size, stride):
-#    print(f"Number of overlapping sequences: {len(sequences)}")
-    # Print the sequences
-#    print(sequences)
+#    print(f"Number of overlapping sequences: {len(sequences)}");print(sequences)
     return [token_sequence[i:i + window_size] for i in range(0, len(token_sequence) - window_size + 1, stride)]
-
-
 
 # ----- -----     SKIP GRAM     ----- -----
 def create_skipgram_pairs(sequence, vocab_size, window_size=2, negative_samples=5):
@@ -100,7 +93,6 @@ def build_skipgram_model(vocab_size, embedding_dim, loss = "sparse_categorical_c
         Flatten(),
         Dense(vocab_size, activation='softmax')  # Output layer for token prediction
     ])
-    #model.compile(optimizer='adam', loss=loss)
     model.compile(optimizer='adam', loss=loss)
     return model
 
@@ -122,26 +114,6 @@ def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=1
     model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=256, verbose=1)
 
     return model
-
-def get_all_embeddings(model, sequences):
-    """
-    Get embeddings for all tokens in all sequences using the trained skip-gram model.
-
-    Parameters:
-    - model: Trained skip-gram model.
-    - sequences: List of sequences, where each sequence is a list of tokens (integers).
-
-    Returns:
-    - all_embeddings: A dictionary where keys are tokens and values are their embeddings.
-    """
-    # Extract the weights of the embedding layer
-    embedding_layer = model.layers[0]  # The first layer is the embedding layer
-    embeddings = embedding_layer.get_weights()[0]  # Get the embedding matrix
-
-    # Map each token to its embedding
-    all_embeddings = {token: embeddings[token] for sequence in sequences for token in sequence}
-
-    return all_embeddings
 
 # Function to get embeddings for each sequence directly
 def get_sequence_embedding(token_sequence, model):
@@ -208,15 +180,6 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, setType="NO", **kw
     df_labels.to_csv(filenameFull, index=False, header=False)
     return
 
-def returnDatasplit():
-    global val_ratio
-    X_data = np.array(data);
-    Y_targets = np.array(labels)
-    print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
-
-    X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
-    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
-
 # Example Usage
 if __name__ == "__main__":
 #    abspath = "/home/vang/Downloads/"
@@ -227,7 +190,7 @@ if __name__ == "__main__":
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
     filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-    data = returnData(folderPath, filepath_data)
+    data = readAndReturnCsvAsDataframe(folderPath, filepath_data)
 
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
@@ -253,15 +216,6 @@ if __name__ == "__main__":
     data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio = doTrainValTestSplit(data, labels)
     X_data = np.array(data); Y_targets = np.array(labels)
     print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
- #   X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
-
- #   X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = returnDatasplit()
-
- #   print(f"Train set: {X_train.shape}, Val set: {X_val.shape}, Test set: {X_test.shape}")
- #   print(f"Train labels: {len(Y_train)}, Val labels: {len(Y_val)}, Test labels: {len(Y_test)}")
- #   print(f"Unique train labels: {np.unique(Y_train, return_counts=True)}")
- #   print(f"Unique val labels: {np.unique(Y_val, return_counts=True)}")
- #   print(f"Unique test labels: {np.unique(Y_test, return_counts=True)}")
 
     print(f"data shape = {data.shape}")
     print(f"data_train shape = {data_train.shape}")
@@ -272,9 +226,40 @@ if __name__ == "__main__":
     # Define the range for the number of clusters
     range_n_clusters = range(n_clusters_min, n_clusters_max)  # Desirable range
 
+
+    data_train_np = np.array(data_train)
+
+    # Apply t-SNE (reduce to 2D)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    data_train_tsne = tsne.fit_transform(data_train_np)
+    # Scatter plot of t-SNE results
+    plt.figure(figsize=(8, 6))
+   # sns.scatterplot(x=data_train_tsne[:, 0], y=data_train_tsne[:, 1], alpha=0.6)
+    sns.scatterplot(x=data_train_tsne[:, 0], y=data_train_tsne[:, 1], hue=labels_train, palette="viridis", alpha=0.6)
+    plt.title("t-SNE Visualization of data_train")
+    plt.xlabel("t-SNE Component 1")
+    plt.ylabel("t-SNE Component 2")
+  #  plt.show()
+
     # Train the tokenizer
     knn_neighbors = 50
     kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(data_train, range_n_clusters, knn_neighbors = knn_neighbors)
+
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    X_tsne = tsne.fit_transform(data_train)
+
+    # Apply KMeans with 3 clusters
+    #kmeans = KMeans(n_clusters=3, random_state=42)
+    clusters = kmeans_model.fit_predict(data_train)
+
+    # Plot t-SNE with 3 clusters
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=X_tsne[:, 0], y=X_tsne[:, 1], hue=clusters, palette="Set1", alpha=0.7)
+    plt.title(f"t-SNE Visualization with {n_clusters} Clusters")
+    plt.xlabel("t-SNE Component 1")
+    plt.ylabel("t-SNE Component 2")
+  #  plt.show()
 
     # Tokenize Train, Val, Test
     train_token_sequence = tokens_train.tolist()
@@ -287,15 +272,6 @@ if __name__ == "__main__":
     train_sequences = create_sequences(train_token_sequence, window_size, stride)
     val_sequences = create_sequences(val_token_sequence, window_size, stride)
     test_sequences = create_sequences(test_token_sequence, window_size, stride)
-
-#    tokenized_data = sequences
-    """    # example of how tokenized_data should look like
-        tokenized_data = [
-            [1, 2, 3, 4, 5],
-            [2, 3, 4, 5, 6],
-            [1, 3, 4, 6, 7]
-        ]    
-    """
 
     # Parameters
     vocab_size = n_clusters_max  # Set vocabulary size based on your tokens
@@ -312,9 +288,7 @@ if __name__ == "__main__":
     train_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in train_sequences])
     val_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in val_sequences])
     test_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in test_sequences])
-    print(train_embeddings.shape)
-    print(val_embeddings.shape)
-    print(test_embeddings.shape)
+    print(train_embeddings.shape); print(val_embeddings.shape); print(test_embeddings.shape)
     print(type(train_embeddings))
 
     train_timeseries_embeddings = convertBackIntoTokenEmbeddings(train_token_sequence, train_sequences, train_embeddings)
@@ -335,30 +309,15 @@ if __name__ == "__main__":
 
     name_kwargs_train = {
         "train": "Set",
-        "nCl": n_clusters,
-        "nN": knn_neighbors,
-        "winSize": window_size,
-        "stride": stride,
-        "winSizeSkip": window_size_skipgram,
-        "nEmbeddings": embedding_dim
+        **name_kwargs
     }
     name_kwargs_val = {
         "val": "Set",
-        "nCl": n_clusters,
-        "nN": knn_neighbors,
-        "winSize": window_size,
-        "stride": stride,
-        "winSizeSkip": window_size_skipgram,
-        "nEmbeddings": embedding_dim
+        **name_kwargs
     }
     name_kwargs_test = {
         "test": "Set",
-        "nCl": n_clusters,
-        "nN": knn_neighbors,
-        "winSize": window_size,
-        "stride": stride,
-        "winSizeSkip": window_size_skipgram,
-        "nEmbeddings": embedding_dim
+        **name_kwargs
     }
     SaveEmbeddingsToOutput(train_timeseries_embeddings, labels_train, subfoldername, **name_kwargs_train)
     SaveEmbeddingsToOutput(val_timeseries_embeddings, labels_val, subfoldername, **name_kwargs_val)

@@ -46,36 +46,14 @@ def doTrainValTestSplit222222(X_data, Y_targets, test_val_ratio = 0.3, valRatio_
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
 
 def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
-    # Get indices for tracking
-    indices = np.arange(len(X_data))  # Get original indices
 
-    # First split: Train vs (Test + Val) using stratification
- #  train_indices, test_val_indices, Y_train, Y_test_val = train_test_split(indices, Y_targets, test_size=test_val_ratio,
- #                                                                           random_state=random_state, stratify=Y_targets)
-
-    #   First     split: Train     vs(Test + Val)
+    # First split: Train vs (Test + Val)
     X_train, X_test_val, Y_train, Y_test_val = train_test_split(X_data, Y_targets, test_size=test_val_ratio,
                                                                 random_state=random_state, stratify=Y_targets)
     val_ratio = test_val_ratio * valRatio_fromTestVal
     print(
         f'''We have used {test_val_ratio * 100}% of the data for the test+val set. So now, the val_ratio = {valRatio_fromTestVal * 100}%
     of the val-test data, translates to {val_ratio * 100}% of the total data.''')
-    # Second split: Test vs Val using stratification
-#    test_indices, val_indices, Y_test, Y_val = train_test_split(test_val_indices, Y_test_val, test_size=valRatio_fromTestVal,
-#                                                                random_state=random_state, stratify=Y_test_val)
-  #  print(train_indices); print(val_indices); print(test_indices)
-    # Extract corresponding X splits using stored indices
-  #  X_train = X_data[train_indices, :]
- #   X_train = X_data.iloc[train_indices, :]
-   # X_val = X_data[val_indices, :]
- #   X_val = X_data.iloc[val_indices, :]
- #   X_test = X_data[test_indices, :]
-#    X_test = X_data.iloc[test_indices, :]
-
-    # Print for verification
-  #  print(f"Train: {len(train_indices)}, Test: {len(test_indices)}, Val: {len(val_indices)}")
-
-
 
     # Second split: Test vs Val
     X_test, X_val, Y_test, Y_val = train_test_split(X_test_val, Y_test_val, test_size=valRatio_fromTestVal,
@@ -200,7 +178,7 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
     plt.savefig(filenameFull)  # Save the plot using the dynamic filename
     print(filenameFull)
 
-    plt.show()
+ #   plt.show()
 
 def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension

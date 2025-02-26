@@ -5,7 +5,6 @@ import torch
 import torch.optim as optim
 import torchvision
 from keras.optimizers import SGD
-from pyparsing import pyparsing_test
 from torchvision.models import resnet50, ResNet50_Weights, list_models, densenet201, DenseNet201_Weights
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,49 +25,10 @@ tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution, \
     saveTrainingMetricsToFile, makeLabelsInt, doTrainValTestSplit222222
 
-
-def compute_confidence_interval(model, X_test, Y_test, n_bootstrap=1000, ci=95, random_state = 0):
-    """
-    Compute confidence interval for a metric (e.g., accuracy) using bootstrap sampling.
-
-    Parameters:
-    - model: Trained model.
-    - X_test: Test features.
-    - Y_test: True labels for the test data.
-    - n_bootstrap: Number of bootstrap samples.
-    - ci: Desired confidence interval (e.g., 95).
-
-    Returns:
-    - lower_bound: Lower bound of the confidence interval.
-    - upper_bound: Upper bound of the confidence interval.
-    """
-    bootstrap_accuracies = []
-
-    # Perform bootstrap sampling
-    for i in range(n_bootstrap):
-        # Check every 10th iteration
-        if (i + 1) % 50 == 0:
-            print(f"Bootstrap iteration {i + 1} completed")
-
-        # Resample the data with replacement
-        X_resampled, Y_resampled = resample(X_test, Y_test, random_state=random_state)
-
-        # Predict on the resampled data
-        predictions = model.predict(X_resampled, verbose=0)
-
-        predictions = (predictions > 0.5).astype(int)  # Convert to 0 or 1 based on threshold 0.5
-
-        # Compute the accuracy
-        accuracy = accuracy_score(Y_resampled, predictions)
-
-        # Store the accuracy
-        bootstrap_accuracies.append(accuracy)
-
-    # Compute the lower and upper percentiles for the confidence interval
-    lower_bound = np.percentile(bootstrap_accuracies, (100 - ci) / 2)
-    upper_bound = np.percentile(bootstrap_accuracies, 100 - (100 - ci) / 2)
-
-    return lower_bound, upper_bound, bootstrap_accuracies
+def print_shapes(name, original, normalized):
+    """Helper function to print original and normalized dataset shapes."""
+    print(f'{name} shape is = {original.shape}')
+    print(f'{name} normalized shape is = {normalized.shape}')
 
 def returnData(filepath_data):
     totalpath_data = abspath + embeddingsPath + filepath_data
@@ -87,17 +47,6 @@ def returnLabels(filepath_label):
   #  print(labels)
     return labels
 
-
-def returnTrainValTest(path_train, path_val, path_test, path_train_labels, path_val_labels, path_test_labels):
-    totalpath_train = abspath + embeddingsPath + path_train
-    totalpath_val = abspath + embeddingsPath + path_val
-    totalpath_test = abspath + embeddingsPath + path_test
-    X_train = pd.read_csv(totalpath_train, header=None)
-    X_val = pd.read_csv(totalpath_val, header=None)
-    X_test = pd.read_csv(totalpath_test, header=None)
-
-    return X_train, X_val, X_test
-
 def returnDataLabelsWhenWithoutSignal2Vec(data, labels):
     data = data.dropna().reset_index(drop=True)
     # Ensure labels align with the updated data
@@ -108,6 +57,20 @@ def returnDataLabelsWhenWithoutSignal2Vec(data, labels):
     labels_s = labels_s.reset_index(drop=True)
 
     return data.to_numpy(), labels_s
+
+def save_data_to_csv(data, labels, subfolderName, suffix, data_type):
+    # Helper function to save both data and labels to CSV
+    data_df = pd.DataFrame(data)
+    labels_df = pd.DataFrame(labels)
+
+    data_filename = f"Data_{data_type}_{suffix}.csv"
+    labels_filename = f"Labels_{data_type}_{suffix}.csv"
+
+    data_filepath = returnFilepathToSubfolder(data_filename, subfolderName)
+    labels_filepath = returnFilepathToSubfolder(labels_filename, subfolderName)
+
+    data_df.to_csv(data_filepath, index=False, header=False)
+    labels_df.to_csv(labels_filepath, index=False, header=False)
 
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
@@ -125,6 +88,7 @@ filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbe
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-24_00-04-20.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-25_21-15-00.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-02.csv"
+filepath_data = "Embeddings_Pitt_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 #filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-20_20-22-02.csv"
 #timeSeriesDataPath = "/01_TimeSeriesData/"; embeddingsPath = timeSeriesDataPath; filepath_data = f"Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" #USE THIS TO TEST WITHOUT SIGNAL2VEC
 data = returnData(filepath_data)
@@ -141,18 +105,25 @@ filepath_labels = "Labels_Pitt_2025-02-22_15-09-08.csv"
 filepath_labels = "Labels_Pitt_2025-02-24_00-04-20.csv"
 filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-25_21-15-00.csv"
 filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-02.csv"
+filepath_labels = "Labels_Pitt_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 labels = returnLabels(filepath_labels)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 
 #data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
 
 filepath_data_train = "Embeddings_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_data_train = "Embeddings_Pitt_trainSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 filepath_data_val = "Embeddings_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_data_val = "Embeddings_Pitt_valSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 filepath_data_test = "Embeddings_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_data_test = "Embeddings_Pitt_testSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 
 filepath_labels_train = "Labels_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_labels_train = "Labels_Pitt_trainSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 filepath_labels_val = "Labels_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_labels_val = "Labels_Pitt_valSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 filepath_labels_test = "Labels_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
+filepath_labels_test = "Labels_Pitt_testSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
 X_train = returnData(filepath_data_train).to_numpy()
 X_val = returnData(filepath_data_val).to_numpy()
 X_test = returnData(filepath_data_test).to_numpy()
@@ -177,144 +148,32 @@ def returnDatasplit(needSplitting = "NO"):
         X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
 
-def model01_Resnet50(data, labels):
-    # Assume `features` is a torch.Tensor with the same dimensions as expected by the ResNet model
-    # Example: `features` should have the shape (N, C, H, W), where
-    # - N is the batch size,
-    # - C is the number of channels (3 for RGB images),
-    # - H is the height,
-    # - W is the width.
 
-    # Step 1: Initialize model with the best available weights
-    weights = ResNet50_Weights.DEFAULT
-    model = resnet50(weights=weights)
-    model.eval()
+def add_rnn_layers(model, rnn_type, num_layers, units, next_rnn_exists):
+    """
+    Adds RNN layers to the model.
 
-    # Step 2: Ensure your features are on the same device as the model (e.g., CPU or GPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    #features = torch.tensor(data.values, dtype=torch.float32)  # Convert DataFrame to tensor
-    #features = features.to(device)
+    Parameters:
+        model (tf.keras.Sequential): The Keras model.
+        rnn_type (str): 'SimpleRNN', 'GRU', or 'LSTM'.
+        num_layers (int): Number of layers to add.
+        units (list or int): List of units per layer or single int if fixed.
+        next_rnn_exists (bool): Whether another RNN type follows.
+    """
+    rnn_layer = {
+        "SimpleRNN": tf.keras.layers.SimpleRNN,
+        "GRU": tf.keras.layers.GRU,
+        "LSTM": tf.keras.layers.LSTM
+    }.get(rnn_type)
 
-    # Convert to tensor and reshape to pseudo-images
-    features = torch.tensor(data.values, dtype=torch.float32)  # (54, 100)
-    features = features.view(-1, 1, 10, 10)  # Reshape to (N, C, H, W)
+    if not rnn_layer or num_layers <= 0:
+        return  # No layers to add
 
-    # Modify the first convolutional layer to accept 1 channel instead of 3
-    model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-    # Modify the fully connected layer for your dataset
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    for i in range(num_layers - 1):
+        model.add(rnn_layer(units[i] if isinstance(units, list) else units, return_sequences=True))
 
-    # Define loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    if isinstance(labels, np.ndarray):
-        labels = torch.tensor(labels, dtype=torch.long)  # Convert to PyTorch tensor
-
-    # Example training loop
-    model.train()
-    for epoch in range(3):  # Replace with the number of epochs you want
-        start_time = time.time()  # Start timer
-        optimizer.zero_grad()
-        outputs = model(features)  # Assuming `features` is your training data
-        loss = criterion(outputs, labels)  # Assuming `labels` are your true labels
-        loss.backward()
-        optimizer.step()
-        end_time = time.time()  # End timer
-
-        epoch_time = end_time - start_time  # Calculate epoch time
-        print(f"Epoch {epoch+1}, Loss: {loss.item()}, Time: {epoch_time:.2f} seconds")
-
-
-    # Assuming you have a list of your class names
-    custom_classes = ["Control", "Dementia"]  # Replace with your actual class names
-    assert len(custom_classes) == num_classes, "Mismatch between custom_classes and num_classes!"
-
-
-    # Perform predictions
-    model.eval()
-    with torch.no_grad():
-        predictions = model(features).softmax(dim=1)
-        for idx, prediction in enumerate(predictions):
-            class_id = prediction.argmax().item()
-            score = prediction[class_id].item()
-            print(f"Sample {idx}: {custom_classes[class_id]}: {100 * score:.1f}%")
-
-    return model
-
-
-    # Step 3: Use the model and print the predicted category
-    # Ensure the features have the shape (N, 3, H, W) as required by the model
-    #prediction = model(features).softmax(dim=1)  # dim=1 as predictions are per class
-    #class_ids = prediction.argmax(dim=1)  # Get the class IDs for each item in the batch
-
-    #for idx, class_id in enumerate(class_ids):
-    #    score = prediction[idx, class_id].item()
-    #    category_name = weights.meta["categories"][class_id]
-    #    print(f"Sample {idx}: {category_name}: {100 * score:.1f}%")
-
-def model02_Densenet201(data, labels):
-    # Step 1: Initialize model with the best available weights
-    weights = DenseNet201_Weights.DEFAULT
-    model = densenet201(weights=weights)
-    model.eval()
-
-    # Step 2: Ensure your features are on the same device as the model (e.g., CPU or GPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-
-    # Convert to tensor and reshape to pseudo-images
-    features = torch.tensor(data.values, dtype=torch.float32)  # (54, 100)
-    features = features.view(-1, 1, 10, 10)  # Reshape to (N, C, H, W)
-
-    # Resize input to 224x224
-    features = F.interpolate(features, size=(224, 224), mode='bilinear', align_corners=False)
-    features = features.to(device)
-
-    # Modify the first convolutional layer to accept 1 channel instead of 3
-    model.features.conv0 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-    # Modify the classifier layer for your dataset
-    num_classes = 2  # Set this according to your dataset
-    model.classifier = nn.Linear(model.classifier.in_features, num_classes)
-
-    # Define loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    if isinstance(labels, np.ndarray):
-        labels = torch.tensor(labels, dtype=torch.long)  # Convert to PyTorch tensor
-    labels = labels.to(device)
-
-    # Example training loop
-    model.train()
-    for epoch in range(3):  # Replace with the number of epochs you want
-        start_time = time.time()  # Start timer
-        optimizer.zero_grad()
-        outputs = model(features)  # Assuming `features` is your training data
-        loss = criterion(outputs, labels)  # Assuming `labels` are your true labels
-        loss.backward()
-        optimizer.step()
-        end_time = time.time()  # End timer
-
-        epoch_time = end_time - start_time  # Calculate epoch time
-        print(f"Epoch {epoch+1}, Loss: {loss.item()}, Time: {epoch_time:.2f} seconds")
-
-    # Assuming you have a list of your class names
-    custom_classes = ["Control", "Dementia"]  # Replace with your actual class names
-    assert len(custom_classes) == num_classes, "Mismatch between custom_classes and num_classes!"
-
-    # Perform predictions
-    model.eval()
-    with torch.no_grad():
-        predictions = model(features).softmax(dim=1)
-        for idx, prediction in enumerate(predictions):
-            class_id = prediction.argmax().item()
-            score = prediction[class_id].item()
-            print(f"Sample {idx}: {custom_classes[class_id]}: {100 * score:.1f}%")
-
-    return model
+    # The last layer should return sequences only if another RNN follows
+    model.add(rnn_layer(units[-1] if isinstance(units, list) else units, return_sequences=next_rnn_exists))
 
 def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     def f1_score(y_true, y_pred):
@@ -339,40 +198,18 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
 
     # Writing to CSV with pandas (which is generally faster)
     subfolderName = "03_ClassificationResults"
-    df_labels_train = pd.DataFrame(Y_train)
-    filename_train = "Labels" + "_train" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_train = returnFilepathToSubfolder(filename_train, subfolderName)
-    df_labels_train.to_csv(filenameFull_train, index=False, header=False)
-    df_data_train = pd.DataFrame(X_train)
-    filename_train = "Data" + "_train" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_train = returnFilepathToSubfolder(filename_train, subfolderName)
-    df_data_train.to_csv(filenameFull_train, index=False, header=False)
+    # Define the suffix based on whether splitting is needed
+    suffix = f"Splitting_{needSplitting}"
 
-    df_labels_val = pd.DataFrame(Y_val)
-    filename_val = "Labels" + "_val" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_val= returnFilepathToSubfolder(filename_val, subfolderName)
-    df_labels_val.to_csv(filenameFull_val, index=False, header=False)
-    df_data_val = pd.DataFrame(X_val)
-    filename_val = "Data" + "_val" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_val = returnFilepathToSubfolder(filename_val, subfolderName)
-    df_data_val.to_csv(filenameFull_val, index=False, header=False)
-
-    df_labels_test = pd.DataFrame(Y_test)
-    filename_test = "Labels" + "_test" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_test = returnFilepathToSubfolder(filename_test, subfolderName)
-    df_labels_test.to_csv(filenameFull_test, index=False, header=False)
-    df_data_test = pd.DataFrame(X_test)
-    filename_train = "Data" + "_test" + f"Splitting_{needSplitting}" + ".csv"
-    filenameFull_test = returnFilepathToSubfolder(filename_test, subfolderName)
-    df_data_test.to_csv(filenameFull_test, index=False, header=False)
+    # Save training, validation, and test data using the helper function
+    save_data_to_csv(X_train, Y_train, "03_ClassificationResults", suffix, "train")
+    save_data_to_csv(X_val, Y_val, "03_ClassificationResults", suffix, "val")
+    save_data_to_csv(X_test, Y_test, "03_ClassificationResults", suffix, "test")
 
     # Normalize the data
   #  x_scaler = MinMaxScaler()
     x_scaler = StandardScaler()
 
-#    X_train_normalized = np.array(x_scaler.fit_transform(X_train.shape(-1,1)))
- #   X_val_normalized = x_scaler.transform
-#    X_test_normalized = x_scaler.transform
     X_train_normalized = x_scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
     X_val_normalized = x_scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
     X_test_normalized = x_scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
@@ -404,22 +241,15 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
         Y_val_normalized = y_scaler.transform(Y_val)  # .reshape(-1, 1))
         Y_test_normalized = y_scaler.transform(Y_test)  # .reshape(-1, 1))
 
-    print(f'X_train shape is = {X_train.shape}')
-    print(f'X_train normalized shape is = {X_train_normalized.shape}')
-    print(f'X_test shape is = {X_test.shape}')
-    print(f'X_test normalized shape is = {X_test_normalized.shape}')
+    # Print shapes for training and test sets
+    print_shapes("X_train", X_train, X_train_normalized)
+    print_shapes("X_test", X_test, X_test_normalized)
+    print_shapes("Y_train", Y_train, Y_train_normalized)
+    print_shapes("Y_test", Y_test, Y_test_normalized)
+    # Print validation shapes only if val_ratio > 0
     if val_ratio > 0:
-        print(f'X_val shape is = {X_val.shape}')
-        print(f'X_val normalized shape is = {X_val_normalized.shape}')
-    # print(Y_test.shape)
-
-    print(f'\nY_train shape is = {Y_train.shape}')
-    print(f'Y_train normalized shape is = {Y_train_normalized.shape}')
-    print(f'Y_test shape is = {Y_test.shape}')
-    print(f'Y_test normalized shape is = {Y_test_normalized.shape}')
-    if val_ratio > 0:
-        print(f'Y_val shape is = {Y_val.shape}')
-        print(f'Y_val normalized shape is = {Y_val_normalized.shape}')
+        print_shapes("X_val", X_val, X_val_normalized)
+        print_shapes("Y_val", Y_val, Y_val_normalized)
 
     X_train_initial = X_train
     X_test_initial = X_test
@@ -468,36 +298,16 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
 
     model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
 
-    if SIMPLE_type == 'YES' and SIMPLE_layers > 0:
-      for i in range(0, SIMPLE_layers - 1):
-        model.add(tf.keras.layers.SimpleRNN(units_simple[i], return_sequences=True))
-      if GRU_type == 'YES' or LSTM_type == 'YES':
-        model.add(tf.keras.layers.SimpleRNN(units_simple[-1], return_sequences=True))
-      else:
-        model.add(tf.keras.layers.SimpleRNN(units_simple, return_sequences=False))
-
-    if GRU_type == 'YES' and GRU_layers > 0:
-      for i in range(0, GRU_layers - 1):
-        model.add(tf.keras.layers.GRU(units_gru, return_sequences=True))
-      if LSTM_type == 'YES':
-        model.add(tf.keras.layers.GRU(units_gru, return_sequences=True))
-      else:
-        model.add(tf.keras.layers.GRU(units_gru, return_sequences=False))
-
-    if LSTM_type == 'YES' and LSTM_layers > 0:
-      i = 0
-      for i in range(0, LSTM_layers - 1):
-        model.add(tf.keras.layers.LSTM(units_lstm[i], return_sequences=True))
-      model.add(tf.keras.layers.LSTM(units_lstm[i], return_sequences=False))
-      # return_sequences=True necessary to pass information to next LSTM layer. return_sequences=False typically for final LSTM layer
-
-
+    # Add layers dynamically
+    add_rnn_layers(model, "SimpleRNN", SIMPLE_layers, units_simple, GRU_type == "YES" or LSTM_type == "YES")
+    add_rnn_layers(model, "GRU", GRU_layers, units_gru, LSTM_type == "YES")
+    add_rnn_layers(model, "LSTM", LSTM_layers, units_lstm, False)  # No RNN follows LSTM
 
   #  if Dropout_layers == 1:
  #     model.add(tf.keras.layers.Dropout(dropout))
 
-  #  if BatchNorm_layers == 1:
- #     model.add(tf.keras.layers.BatchNormalization())
+ #   if BatchNorm_layers == 1:
+  #    model.add(tf.keras.layers.BatchNormalization())
 
     if ExtraDense == 'YES':
         for i in range(0, DENSE_layers):
@@ -508,7 +318,7 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     start_time = time.perf_counter() # Get current time at start
 
     # Compile the model
-  #  learning_rate = 0.007 #0.035 Pitt?
+  #  learning_rate = 0.007 #0.035 Pitt for ncl=5???
     momentum = 0.9
     optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
   #  optimizer = Adam(learning_rate=learning_rate)
@@ -572,27 +382,16 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
-    figureNameParams = f"ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
+    figureNameParams = f"needSplitting{needSplitting}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test_normalized.shape}")
 
     saveTrainingMetricsToFile(history, model, rnn_neural_time, test_metrics, predictions.flatten(), Y_test_normalized.flatten(), filepath_data, figureNameParams, ratio_0_to_1_ALL)
-
     plotTrainValMetrics(history, filepath_data, figureNameParams)
 
-
-    # Example usage:
-    n_bootstrap = 1000
-    ci = 95
-  #  lower_bound, upper_bound, bootstrap_accuracies = compute_confidence_interval(model, X_test_normalized, Y_test_normalized, n_bootstrap, ci)
-  #  print(f"Bootstrap Accuracy: {np.mean(bootstrap_accuracies) * 100:.1f}% ± {upper_bound - lower_bound:.4f}%")
-   # plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound) # Plot the distribution
-
-#modelResnet50 = model01_Resnet50(data, labels)
-#modelDensenet01 = model02_Densenet201(data, labels)
-lr_min = 0.035 # 0.001
+lr_min = 0.001 # 0.001
 lr_max = 0.01 # 0.01
-lr_distinct = 1 # 10
+lr_distinct = 10 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 for lr in learning_rate:
     modelVangRNN = model03_VangRNN(data, labels, needSplitting="NO" , learning_rate = lr)

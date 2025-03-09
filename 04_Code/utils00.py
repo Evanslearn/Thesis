@@ -28,9 +28,22 @@ def returnFilepathToSubfolder(filename, subfolderName):
 
     return file_path
 
+def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False):
+    df = pd.read_csv(abspath + filepath, header=None)
+
+    if as_series:
+        df = df.iloc[:, 0] if not isinstance(df, pd.Series) else df  # Assigning to df
+        if dataFilename == "data": dataFilename = "labels"
+
+    print(f"{dataFilename} shape = {df.shape}")
+    return df
+
 def doTrainValTestSplit222222(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+    # Create indices for the data
+    indices = np.arange(len(X_data))
+
     # split into train + (val_test) sets
-    X_train, X_test_val, Y_train, Y_test_val = train_test_split(X_data, Y_targets, test_size=test_val_ratio,
+    X_train, X_test_val, Y_train, Y_test_val, indices_train, indices_test_val = train_test_split(X_data, Y_targets, indices, test_size=test_val_ratio,
                                                                 random_state=random_state, stratify=Y_targets)
 
     val_ratio = test_val_ratio * valRatio_fromTestVal
@@ -38,17 +51,19 @@ def doTrainValTestSplit222222(X_data, Y_targets, test_val_ratio = 0.3, valRatio_
         f'''We have used {test_val_ratio * 100}% of the data for the test+val set. So now, the val_ratio = {valRatio_fromTestVal * 100}%
     of the val-test data, translates to {val_ratio * 100}% of the total data.''')
     # split into val + test sets
-    X_test, X_val, Y_test, Y_val = train_test_split(X_test_val, Y_test_val, test_size=valRatio_fromTestVal,
+    X_test, X_val, Y_test, Y_val, indices_test, indices_val = train_test_split(X_test_val, Y_test_val, indices_test_val, test_size=valRatio_fromTestVal,
                                                       random_state=random_state, stratify=Y_test_val)
 
-    print(f'train - {Y_train}, \nval - {Y_val},\ntest {Y_test}')
+    print(f'train - {len(Y_train)}, \nval - {len(Y_val)},\ntest {len(Y_test)}')
 
-    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
+    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
 
 def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+    # Create indices for the data
+    indices = np.arange(len(X_data))
 
     # First split: Train vs (Test + Val)
-    X_train, X_test_val, Y_train, Y_test_val = train_test_split(X_data, Y_targets, test_size=test_val_ratio,
+    X_train, X_test_val, Y_train, Y_test_val, indices_train, indices_test_val  = train_test_split(X_data, Y_targets, indices, test_size=test_val_ratio,
                                                                 random_state=random_state, stratify=Y_targets)
     val_ratio = test_val_ratio * valRatio_fromTestVal
     print(
@@ -56,15 +71,12 @@ def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTe
     of the val-test data, translates to {val_ratio * 100}% of the total data.''')
 
     # Second split: Test vs Val
-    X_test, X_val, Y_test, Y_val = train_test_split(X_test_val, Y_test_val, test_size=valRatio_fromTestVal,
+    X_test, X_val, Y_test, Y_val, indices_test, indices_val  = train_test_split(X_test_val, Y_test_val, indices_test_val, test_size=valRatio_fromTestVal,
                                                     random_state=random_state, stratify=Y_test_val)
 
-    print(f"Train: {len(Y_train)}, Test: {len(Y_test)}, Val: {len(Y_val)}")
+    print(f"Train: {len(Y_train)}, Val: {len(Y_val)}, Test: {len(Y_test)}")
 
-    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
-
-  #  return train_indices, val_indices, test_indices, X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
-
+    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
 
 def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.hist(bootstrap_accuracies, bins=50, color='skyblue', edgecolor='black')
@@ -77,7 +89,6 @@ def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.xlabel('Accuracy')
     plt.ylabel('Frequency')
     plt.show()
-
 
 def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression = "NO"):
     # Access metrics from the history

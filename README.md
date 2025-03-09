@@ -49,6 +49,9 @@
 ## 2025/02/26
 * code cleanup + created another 03 file, to separate some models currently unused. still working on stratification and correct train-val-test split
 
+## 2025/03/01 - 09
+* Code cleanup + some more work on correct train-val-test split
+
 # TO DO
 * STRATIFICATION
 * Experiment with sampling of the mp3 files?

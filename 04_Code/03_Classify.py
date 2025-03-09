@@ -1,3 +1,4 @@
+import sys
 import time
 from datetime import datetime
 import random
@@ -23,29 +24,13 @@ from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution, \
-    saveTrainingMetricsToFile, makeLabelsInt, doTrainValTestSplit222222
+    saveTrainingMetricsToFile, makeLabelsInt, doTrainValTestSplit222222, readCsvAsDataframe
+
 
 def print_shapes(name, original, normalized):
     """Helper function to print original and normalized dataset shapes."""
     print(f'{name} shape is = {original.shape}')
     print(f'{name} normalized shape is = {normalized.shape}')
-
-def returnData(filepath_data):
-    totalpath_data = abspath + embeddingsPath + filepath_data
-    data = pd.read_csv(totalpath_data, header=None)
-    print(f"data shape = {data.shape}")
-    return data
-
-def returnLabels(filepath_label):
-    initial_labels = returnData(filepath_label)
-
-    if type(initial_labels) != type(pd.Series):
-#        print(f"type is: {type(initial_labels)}")
-        initial_labels = initial_labels.iloc[:, 0]  # convert to series
-
-    labels = initial_labels.to_numpy()
-  #  print(labels)
-    return labels
 
 def returnDataLabelsWhenWithoutSignal2Vec(data, labels):
     data = data.dropna().reset_index(drop=True)
@@ -75,6 +60,7 @@ def save_data_to_csv(data, labels, subfolderName, suffix, data_type):
 abspath = "/home/vang/Downloads/"
 abspath = os.getcwd()
 embeddingsPath = "/02_Embeddings/"
+folderPath = abspath + embeddingsPath
 filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
@@ -89,9 +75,12 @@ filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbe
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-25_21-15-00.csv"
 filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-02.csv"
 filepath_data = "Embeddings_Pitt_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
 #filepath_data = "Embeddings_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-20_20-22-02.csv"
 #timeSeriesDataPath = "/01_TimeSeriesData/"; embeddingsPath = timeSeriesDataPath; filepath_data = f"Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" #USE THIS TO TEST WITHOUT SIGNAL2VEC
-data = returnData(filepath_data)
+#data = returnData(filepath_data, "allData")
+data = readCsvAsDataframe(folderPath, filepath_data, "allData")
 
 embeddingsPath = "/02_Embeddings/"
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
@@ -106,47 +95,85 @@ filepath_labels = "Labels_Pitt_2025-02-24_00-04-20.csv"
 filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-25_21-15-00.csv"
 filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-02.csv"
 filepath_labels = "Labels_Pitt_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
-labels = returnLabels(filepath_labels)
+filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_labels = "Labels_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
+labels = readCsvAsDataframe(folderPath, filepath_labels, "allLabels", as_series=True)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 
 #data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
 
 filepath_data_train = "Embeddings_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_data_train = "Embeddings_Pitt_trainSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_data_train = "Embeddings_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_data_train = "Embeddings_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
 filepath_data_val = "Embeddings_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_data_val = "Embeddings_Pitt_valSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_data_val = "Embeddings_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_data_val = "Embeddings_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
 filepath_data_test = "Embeddings_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_data_test = "Embeddings_Pitt_testSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_data_test = "Embeddings_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_data_test = "Embeddings_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
 
 filepath_labels_train = "Labels_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_labels_train = "Labels_Pitt_trainSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_labels_train = "Labels_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_labels_train = "Labels_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
 filepath_labels_val = "Labels_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_labels_val = "Labels_Pitt_valSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
+filepath_labels_val = "Labels_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_labels_val = "Labels_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
 filepath_labels_test = "Labels_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_01-02-03.csv"
 filepath_labels_test = "Labels_Pitt_testSet_nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-02-26_22-25-37.csv"
-X_train = returnData(filepath_data_train).to_numpy()
-X_val = returnData(filepath_data_val).to_numpy()
-X_test = returnData(filepath_data_test).to_numpy()
-Y_train = returnLabels(filepath_labels_train)
-Y_val = returnLabels(filepath_labels_val)
-Y_test = returnLabels(filepath_labels_test)
+filepath_labels_test = "Labels_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-02_01-14-29.csv"
+filepath_labels_test = "Labels_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
+
+X_train = readCsvAsDataframe(folderPath, filepath_data_train, "X_train").to_numpy()
+X_val = readCsvAsDataframe(folderPath, filepath_data_val, "X_val").to_numpy()
+X_test = readCsvAsDataframe(folderPath, filepath_data_test, "X_test").to_numpy()
+Y_train = readCsvAsDataframe(folderPath, filepath_labels_train, "Y_train", as_series=True)
+Y_val = readCsvAsDataframe(folderPath, filepath_labels_val, "Y_val", as_series=True)
+Y_test = readCsvAsDataframe(folderPath, filepath_labels_test, "Y_test", as_series=True)
 val_ratio = 1
+
+filepath_indices = "Indices_Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
+filepath_indices_train = "Indices_Pitt_trainSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-06.csv"
+filepath_indices_val = "Indices_Pitt_valSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
+filepath_indices_test = "Indices_Pitt_testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-09_21-57-07.csv"
+indices_step02_train = readCsvAsDataframe(folderPath, filepath_indices_train, "indicesTrain")
+indices_step02_val = readCsvAsDataframe(folderPath, filepath_indices_val, "indicesVal")
+indices_step02_test = readCsvAsDataframe(folderPath, filepath_indices_test, "indicesTest")
+indices_step02 = readCsvAsDataframe(folderPath, filepath_indices, "indicesAll").to_numpy()
 
 def returnDatasplit(needSplitting = "NO"):
     global val_ratio
+    print(f"\n----- NEEDS SPLITTING == {needSplitting} -----")
     if needSplitting == "NO":
-        X_train = returnData(filepath_data_train).to_numpy()
-        X_val = returnData(filepath_data_val).to_numpy()
-        X_test = returnData(filepath_data_test).to_numpy()
-        Y_train = returnLabels(filepath_labels_train)
-        Y_val = returnLabels(filepath_labels_val)
-        Y_test = returnLabels(filepath_labels_test)
+        X_train = readCsvAsDataframe(folderPath, filepath_data_train, "X_train").to_numpy()
+        X_val = readCsvAsDataframe(folderPath, filepath_data_val, "X_val").to_numpy()
+        X_test = readCsvAsDataframe(folderPath, filepath_data_test, "X_test").to_numpy()
+        Y_train = readCsvAsDataframe(folderPath, filepath_labels_train, "Y_train", as_series=True).to_numpy()
+        Y_val = readCsvAsDataframe(folderPath, filepath_labels_val, "Y_val", as_series=True).to_numpy()
+        Y_test = readCsvAsDataframe(folderPath, filepath_labels_test, "Y_test", as_series=True).to_numpy()
+        indices_train = indices_step02_train.to_numpy(); indices_val = indices_step02_val.to_numpy(); indices_test = indices_step02_test.to_numpy()
+
     else:
         X_data = np.array(data); Y_targets = np.array(labels)
         print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = doTrainValTestSplit222222(X_data, Y_targets)
-    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio
+        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit222222(X_data, Y_targets)
+
+        caseTypeStrings = ["Train", "Val", "Test"]
+        indicesStrings = [indices_train, indices_val, indices_test]
+        formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        subfolderName = "03_ClassificationResults"
+        for i in range (0, len(caseTypeStrings)):
+            df_indices = pd.DataFrame({'Indices': indicesStrings[i]})
+            filename = "Indices" + caseTypeStrings[i] + "_" + formatted_datetime + ".csv"
+            filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+            df_indices.to_csv(filenameFull, index=False, header=False)
+
+    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
 
 
 def add_rnn_layers(model, rnn_type, num_layers, units, next_rnn_exists):
@@ -175,6 +202,14 @@ def add_rnn_layers(model, rnn_type, num_layers, units, next_rnn_exists):
     # The last layer should return sequences only if another RNN follows
     model.add(rnn_layer(units[-1] if isinstance(units, list) else units, return_sequences=next_rnn_exists))
 
+def check_indicesEqual(indices_step02, indices_all):
+    print(f'Indices shape: step2 = {indices_step02.shape}, step3 = {indices_all.shape}')
+    if not np.array_equal(indices_step02, indices_all):
+        print(f"Condition failed: {indices_step02} != {indices_all}")
+        sys.exit()  # Terminate the execution
+    else:
+        print(f"Condition success: indices_step02 == indices_all -> {np.array_equal(indices_step02, indices_all)}")
+
 def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     def f1_score(y_true, y_pred):
         precision = tf.keras.metrics.Precision()
@@ -190,11 +225,14 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
         f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + tf.keras.backend.epsilon())
         return f1
 
-    X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio = returnDatasplit(needSplitting)
-    print(X_train[0])
+    X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = returnDatasplit(needSplitting)
+  #  print(X_train[0])
     print(Y_train)
     print(Y_val)
     print(Y_test)
+
+    indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
+    check_indicesEqual(indices_step02, indices_all)
 
     # Writing to CSV with pandas (which is generally faster)
     subfolderName = "03_ClassificationResults"
@@ -242,14 +280,14 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
         Y_test_normalized = y_scaler.transform(Y_test)  # .reshape(-1, 1))
 
     # Print shapes for training and test sets
-    print_shapes("X_train", X_train, X_train_normalized)
-    print_shapes("X_test", X_test, X_test_normalized)
-    print_shapes("Y_train", Y_train, Y_train_normalized)
-    print_shapes("Y_test", Y_test, Y_test_normalized)
+ #   print_shapes("X_train", X_train, X_train_normalized)
+ #   print_shapes("X_test", X_test, X_test_normalized)
+ #   print_shapes("Y_train", Y_train, Y_train_normalized)
+ #   print_shapes("Y_test", Y_test, Y_test_normalized)
     # Print validation shapes only if val_ratio > 0
-    if val_ratio > 0:
-        print_shapes("X_val", X_val, X_val_normalized)
-        print_shapes("Y_val", Y_val, Y_val_normalized)
+#    if val_ratio > 0:
+#        print_shapes("X_val", X_val, X_val_normalized)
+#        print_shapes("Y_val", Y_val, Y_val_normalized)
 
     X_train_initial = X_train
     X_test_initial = X_test
@@ -260,12 +298,11 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     metrics = ['mse', 'mae', 'accuracy']
     metrics = ['accuracy', Precision(), Recall()]
     batch_size = 32
-    epochs = 50
+    epochs = 50 # 50
 
     units_simple = [32, 32] # [32, 32]
     units_lstm = [32, 32, 32] # 32
     units_gru = 32
-    #units_simple = units_lstm = units_gru
     neurons_dense = 64
 
   #  dropout = 0.4
@@ -389,9 +426,9 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     saveTrainingMetricsToFile(history, model, rnn_neural_time, test_metrics, predictions.flatten(), Y_test_normalized.flatten(), filepath_data, figureNameParams, ratio_0_to_1_ALL)
     plotTrainValMetrics(history, filepath_data, figureNameParams)
 
-lr_min = 0.001 # 0.001
-lr_max = 0.01 # 0.01
-lr_distinct = 10 # 10
+lr_min = 0.035 # 0.001
+lr_max = 0.1 # 0.01
+lr_distinct = 1 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 for lr in learning_rate:
     modelVangRNN = model03_VangRNN(data, labels, needSplitting="NO" , learning_rate = lr)

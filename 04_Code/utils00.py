@@ -38,7 +38,7 @@ def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False
     print(f"{dataFilename} shape = {df.shape}")
     return df
 
-def doTrainValTestSplit222222(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+def doTrainValTestSplit2(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
     # Create indices for the data
     indices = np.arange(len(X_data))
 

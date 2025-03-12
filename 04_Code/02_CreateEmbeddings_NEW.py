@@ -1,22 +1,25 @@
 import os
-#import time
-from datetime import datetime
-#from fileinput import filename
-#from os.path import abspath
-from matplotlib import pyplot as plt
-from sklearn.manifold import TSNE
-import seaborn as sns
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from datetime import datetime
+from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KNeighborsClassifier
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Dense, Flatten
 from tensorflow.keras.preprocessing.sequence import skipgrams
-from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, makeLabelsInt, doTrainValTestSplit222222, \
-    readCsvAsDataframe
 
+from utils00 import (
+    makeLabelsInt,
+    doTrainValTestSplit,
+    doTrainValTestSplit2,
+    readCsvAsDataframe
+)
 
 def find_optimal_clusters(data, range_n_clusters):
     """Find the optimal number of clusters using silhouette score."""
@@ -41,13 +44,11 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     print(f"Tokens assigned to first 5 data points: {tokens[:5]}")  # Print first 5 token assignments
 
     # Step 3: Train k-NN classifier
-    knn = KNeighborsClassifier(n_neighbors=knn_neighbors)
-    knn.fit(data, tokens)
-
+    knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens)
+ #   knn.fit(data, tokens)
     return kmeans, knn, tokens, n_clusters
 
 def create_sequences(token_sequence, window_size, stride):
-#    print(f"Number of overlapping sequences: {len(sequences)}");print(sequences)
     return [token_sequence[i:i + window_size] for i in range(0, len(token_sequence) - window_size + 1, stride)]
 
 # ----- -----     SKIP GRAM     ----- -----
@@ -119,54 +120,52 @@ def convertBackIntoTokenEmbeddings(token_sequence, sequences, sequence_embedding
 def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, indices=None, setType="NO", **kwargs):
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    df = pd.DataFrame(embeddings)
-    # Check if indices are available and add them as a column
-    df_indices = pd.DataFrame({'Indices' : []})
-    if indices is not None:
-        df_indices = pd.DataFrame(indices)
-
     case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
     case_type_str = f"_{case_type}_{setType}_" if setType != "NO" else f"_{case_type}_"
 
     filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
 
-    filename = "Embeddings" + case_type_str + filename_variables + "_" + formatted_datetime + ".csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+    # Helper function to generate paths dynamically
+    def generate_path(prefix):
+        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
 
     # Writing to CSV with pandas (which is generally faster)
-    df.to_csv(filenameFull, index=False, header=False)
-
-    df_labels = pd.DataFrame(labels)
-    filename = "Labels" + case_type_str + filename_variables + "_" + formatted_datetime + ".csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
-    df_labels.to_csv(filenameFull, index=False, header=False)
-
-    filename = "Indices" + case_type_str + filename_variables + "_" + formatted_datetime + ".csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
-    df_indices.to_csv(filenameFull, index=False, header=False)
+    pd.DataFrame(embeddings).to_csv(generate_path("Embeddings"), index=False, header=False)
+    pd.DataFrame(labels).to_csv(generate_path("Labels"), index=False, header=False)
+    # Save indices only if provided
+    if indices is not None:
+        pd.DataFrame(indices).to_csv(generate_path("Indices"), index=False, header=False)
 
     return
 
+def plot_tsne(data, labels, title):
+    """Applies t-SNE and plots results."""
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    transformed = tsne.fit_transform(data)
+
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
+    plt.title("t-SNE Visualization" + title)
+    plt.xlabel("t-SNE Component 1"); plt.ylabel("t-SNE Component 2")
+    plt.show()
+
 # Example Usage
 if __name__ == "__main__":
-#    abspath = "/home/vang/Downloads/"
-    abspath = ""
-    abspath = os.getcwd()
     timeSeriesDataPath = "/01_TimeSeriesData/"
-    folderPath = abspath + timeSeriesDataPath
+    folderPath = os.getcwd() + timeSeriesDataPath
     filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
     filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-    data = readCsvAsDataframe(folderPath, filepath_data)
 
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
     filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
+
+    data = readCsvAsDataframe(folderPath, filepath_data)
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
     print(f"----- BEFORE DROPPING NA -----")
-    print(f"Labels shape is = {initial_labels.shape}")
-    print(f"Data shape is = {data.shape}")
+    print(f"Labels shape is = {initial_labels.shape}\nData shape is = {data.shape}")
     # Drop NaN rows from data, # Reset indices after dropping rows
     data = data.dropna().reset_index(drop=True)
     # Ensure labels align with the updated data
@@ -175,56 +174,24 @@ if __name__ == "__main__":
 
     labels = makeLabelsInt(labels)
     print(f"----- AFTER DROPPING NA -----")
-    print(f"Labels shape is = {labels.shape}")
-    print(f"Data shape is = {data.shape}\n")
+    print(f"Labels shape is = {initial_labels.shape}\nData shape is = {data.shape}")
 
     data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
-    X_data = np.array(data); Y_targets = np.array(labels)
-    print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
+    print(f'\nLength of X is = {len(data)}. Length of Y is = {len(labels)}')
 
-    print(f"data shape = {data.shape}")
-    print(f"data_train shape = {data_train.shape}")
-    print(f"data_val shape = {data_val.shape}")
-    print(f"data_test shape = {data_test.shape}")
+    print("data shape = {0}\ndata_train shape = {1}\ndata_val shape = {2}\ndata_test shape = {3}".format(
+        data.shape, data_train.shape, data_val.shape, data_test.shape))
     n_clusters_min = 5 # Was initially 2
     n_clusters_max = 30 # Was initially 10
     # Define the range for the number of clusters
     range_n_clusters = range(n_clusters_min, n_clusters_max)  # Desirable range
 
-    data_train_np = np.array(data_train)
-
-    def testTsne():
-        # Apply t-SNE (reduce to 2D)
-        tsne = TSNE(n_components=2, perplexity=30, random_state=42)
-        data_train_tsne = tsne.fit_transform(data_train_np)
-        # Scatter plot of t-SNE results
-        plt.figure(figsize=(8, 6))
-        sns.scatterplot(x=data_train_tsne[:, 0], y=data_train_tsne[:, 1], hue=labels_train, palette="viridis", alpha=0.6)
-        plt.title("t-SNE Visualization of data_train")
-        plt.xlabel("t-SNE Component 1")
-        plt.ylabel("t-SNE Component 2")
-      #  plt.show()
-
     # Train the tokenizer
     knn_neighbors = 50
     kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(data_train, range_n_clusters, knn_neighbors = knn_neighbors)
 
-    def testTsne2():
-        # Apply t-SNE
-        tsne = TSNE(n_components=2, perplexity=30, random_state=42)
-        X_tsne = tsne.fit_transform(data_train)
-
-        # Apply KMeans with 3 clusters
-        #kmeans = KMeans(n_clusters=3, random_state=42)
-        clusters = kmeans_model.fit_predict(data_train)
-
-        # Plot t-SNE with 3 clusters
-        plt.figure(figsize=(8, 6))
-        sns.scatterplot(x=X_tsne[:, 0], y=X_tsne[:, 1], hue=clusters, palette="Set1", alpha=0.7)
-        plt.title(f"t-SNE Visualization with {n_clusters} Clusters")
-        plt.xlabel("t-SNE Component 1")
-        plt.ylabel("t-SNE Component 2")
-      #  plt.show()
+    plot_tsne(np.array(data_train), labels_train, "of data_train")
+    plot_tsne(data_train, kmeans_model.fit_predict(data_train), f"with {n_clusters} Clusters")
 
     # Tokenize Train, Val, Test
     train_token_sequence = tokens_train.tolist()

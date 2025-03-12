@@ -1,31 +1,47 @@
 import sys
+import os
 import time
-from datetime import datetime
 import random
-import torch
-import torch.optim as optim
-import torchvision
-from keras.optimizers import SGD
-from torchvision.models import resnet50, ResNet50_Weights, list_models, densenet201, DenseNet201_Weights
-import torch.nn as nn
-import torch.nn.functional as F
+from datetime import datetime
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
+
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
 import matplotlib.pyplot as plt
+
+### PyTorch Imports ###
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torchvision
+from torchvision.models import resnet50, ResNet50_Weights, densenet201, DenseNet201_Weights, list_models
+
+### TensorFlow & Keras Imports ###
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.optimizers import Adam
+from keras.optimizers import SGD
 from tensorflow.keras.metrics import MeanSquaredError, Accuracy, Precision, Recall
+
+tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
+
+### SciKit-Learn Imports ###
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.utils import resample
-from tensorflow import keras
-from tensorflow.keras.optimizers import Adam
-tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
-from utils00 import returnFilepathToSubfolder, doTrainValTestSplit, plotTrainValMetrics, plot_bootstrap_distribution, \
-    saveTrainingMetricsToFile, makeLabelsInt, doTrainValTestSplit222222, readCsvAsDataframe
 
+from utils00 import (
+    returnFilepathToSubfolder,
+    doTrainValTestSplit,
+    doTrainValTestSplit2,
+    plotTrainValMetrics,
+    plot_bootstrap_distribution,
+    saveTrainingMetricsToFile,
+    makeLabelsInt, readCsvAsDataframe
+)
 
 def print_shapes(name, original, normalized):
     """Helper function to print original and normalized dataset shapes."""
@@ -57,10 +73,8 @@ def save_data_to_csv(data, labels, subfolderName, suffix, data_type):
     data_df.to_csv(data_filepath, index=False, header=False)
     labels_df.to_csv(labels_filepath, index=False, header=False)
 
-abspath = "/home/vang/Downloads/"
-abspath = os.getcwd()
 embeddingsPath = "/02_Embeddings/"
-folderPath = abspath + embeddingsPath
+folderPath = os.getcwd() + embeddingsPath
 filepath_data = "Embeddings_Lu_2025-01-15_23-11-50.csv"
 #filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
 filepath_data = "Embeddings_Pitt_2025-01-21_02-02-38.csv"
@@ -161,7 +175,7 @@ def returnDatasplit(needSplitting = "NO"):
         X_data = np.array(data); Y_targets = np.array(labels)
         print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit222222(X_data, Y_targets)
+        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit2(X_data, Y_targets)
 
         caseTypeStrings = ["Train", "Val", "Test"]
         indicesStrings = [indices_train, indices_val, indices_test]
@@ -214,35 +228,29 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
     def f1_score(y_true, y_pred):
         precision = tf.keras.metrics.Precision()
         recall = tf.keras.metrics.Recall()
-
         precision.update_state(y_true, y_pred)
         recall.update_state(y_true, y_pred)
 
-        precision_value = precision.result()
-        recall_value = recall.result()
-
         # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
-        f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + tf.keras.backend.epsilon())
-        return f1
+        return 2 * (precision.result() * recall.result()) / (precision.result() + recall.result() + tf.keras.backend.epsilon())
 
     X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = returnDatasplit(needSplitting)
   #  print(X_train[0])
-    print(Y_train)
-    print(Y_val)
-    print(Y_test)
+    print(Y_train); print(Y_val); print(Y_test)
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
     check_indicesEqual(indices_step02, indices_all)
 
-    # Writing to CSV with pandas (which is generally faster)
+    # save data to a CSV
     subfolderName = "03_ClassificationResults"
-    # Define the suffix based on whether splitting is needed
     suffix = f"Splitting_{needSplitting}"
 
     # Save training, validation, and test data using the helper function
-    save_data_to_csv(X_train, Y_train, "03_ClassificationResults", suffix, "train")
-    save_data_to_csv(X_val, Y_val, "03_ClassificationResults", suffix, "val")
-    save_data_to_csv(X_test, Y_test, "03_ClassificationResults", suffix, "test")
+#    save_data_to_csv(X_train, Y_train, "03_ClassificationResults", suffix, "train")
+ #   save_data_to_csv(X_val, Y_val, "03_ClassificationResults", suffix, "val")
+#    save_data_to_csv(X_test, Y_test, "03_ClassificationResults", suffix, "test")
+    for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
+        save_data_to_csv(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
 
     # Normalize the data
   #  x_scaler = MinMaxScaler()
@@ -266,18 +274,11 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
         print(f"{allYNames[Y]}, Y_0/Y_1 = {ratio_0_to_1}")
         ratio_0_to_1_ALL.append(ratio_0_to_1)
 
-    # Assuming y_train, y_val, and y_test need to be scaled
+    # Normalize Labels (might not be necessary)
     y_scaler = MinMaxScaler()
-
-    # Logic for predicting both 1 feature and many features
-    if Y_train.ndim == 1:
-        Y_train_normalized = y_scaler.fit_transform(Y_train.reshape(-1, 1))
-        Y_val_normalized = y_scaler.transform(Y_val.reshape(-1, 1))
-        Y_test_normalized = y_scaler.transform(Y_test.reshape(-1, 1))
-    else:
-        Y_train_normalized = y_scaler.fit_transform(Y_train)  # .reshape(-1, 1))
-        Y_val_normalized = y_scaler.transform(Y_val)  # .reshape(-1, 1))
-        Y_test_normalized = y_scaler.transform(Y_test)  # .reshape(-1, 1))
+    Y_train_normalized = y_scaler.fit_transform(Y_train.reshape(-1, 1)) if Y_train.ndim == 1 else y_scaler.fit_transform(Y_train)
+    Y_val_normalized = y_scaler.transform(Y_val.reshape(-1, 1)) if Y_train.ndim == 1 else y_scaler.transform(Y_val)
+    Y_test_normalized = y_scaler.transform(Y_test.reshape(-1, 1)) if Y_train.ndim == 1 else y_scaler.transform(Y_test)
 
     # Print shapes for training and test sets
  #   print_shapes("X_train", X_train, X_train_normalized)
@@ -288,11 +289,6 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
 #    if val_ratio > 0:
 #        print_shapes("X_val", X_val, X_val_normalized)
 #        print_shapes("Y_val", Y_val, Y_val_normalized)
-
-    X_train_initial = X_train
-    X_test_initial = X_test
-    Y_train_initial = Y_train
-    Y_test_initial = Y_test
 
     loss = 'binary_crossentropy'#'mae'
     metrics = ['mse', 'mae', 'accuracy']
@@ -371,7 +367,7 @@ def model03_VangRNN(data, labels, needSplitting, learning_rate = 0.035):
 #    X_train_normalized = X_train; Y_train_normalized = Y_train; X_val_normalized = X_val; Y_val_normalized = Y_val
     print("NO NEED TO SCALE Y, SO OVERRIDING THE VALUES")
  #   print(Y_train, Y_val, Y_test)
-    Y_train_normalized = Y_train; Y_val_normalized = Y_val; Y_test_normalized = Y_test;
+    Y_train_normalized = Y_train; Y_val_normalized = Y_val; Y_test_normalized = Y_test
   #  print(Y_train, Y_val, Y_test)
     # Train the model
     history = model.fit(X_train_normalized, Y_train_normalized, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val_normalized))

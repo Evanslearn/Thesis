@@ -26,7 +26,7 @@ def find_optimal_clusters(data, range_n_clusters):
     best_n_clusters, best_score, best_model  = None, -1, None
 
     for n_clusters in range_n_clusters:
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        kmeans = KMeans(n_clusters=n_clusters, random_state=config["random_state"])
         cluster_labels = kmeans.fit_predict(data)
         score = silhouette_score(data, cluster_labels)
         print(f"Clusters = {n_clusters} -> Silhouette score = {score}")
@@ -45,7 +45,6 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
 
     # Step 3: Train k-NN classifier
     knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens)
- #   knn.fit(data, tokens)
     return kmeans, knn, tokens, n_clusters
 
 def create_sequences(token_sequence, window_size, stride):
@@ -87,7 +86,7 @@ def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=1
 
     # Train the model
     pairs_context, pairs_target = pairs[:, 0], pairs[:, 1]
-    model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=256, verbose=1)
+    model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1)
 
     return model
 
@@ -140,7 +139,7 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, indices=None, setT
 
 def plot_tsne(data, labels, title):
     """Applies t-SNE and plots results."""
-    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    tsne = TSNE(n_components=2, perplexity=config["perplexity"], random_state=config["random_state"])
     transformed = tsne.fit_transform(data)
 
     plt.figure(figsize=(8, 6))
@@ -148,6 +147,27 @@ def plot_tsne(data, labels, title):
     plt.title("t-SNE Visualization" + title)
     plt.xlabel("t-SNE Component 1"); plt.ylabel("t-SNE Component 2")
     plt.show()
+
+def print_data_info(data, labels, stage=""):
+    print(f"----- {stage} -----")
+    print(f"Labels shape = {labels.shape}, Data shape = {data.shape}")
+
+# Configuration dictionary to store hyperparameters and settings
+config = {
+    "n_clusters_min": 5,        # Min number of clusters for KMeans - 2
+    "n_clusters_max": 30,       # Max number of clusters for KMeans - 10
+    "knn_neighbors": 50,        # Number of neighbors for k-NN - 50
+    "window_size": 10,          # Window size for sequence generation - 10
+    "stride": 1,                # Stride for sequence generation - 1
+    "embedding_dim": 300,       # Dimension of word embeddings - 300
+    "window_size_skipgram": 20, # - 20
+    "epochs": 1,                # Number of training epochs
+    "batch_size": 256,          # Batch size for training
+    "perplexity": 30,           # t-SNE perplexity
+    "random_state": 42,         # Random state for reproducibility
+    "output_folder": "02_Embeddings"  # Folder for saving embeddings
+
+}
 
 # Example Usage
 if __name__ == "__main__":
@@ -164,8 +184,7 @@ if __name__ == "__main__":
     data = readCsvAsDataframe(folderPath, filepath_data)
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
-    print(f"----- BEFORE DROPPING NA -----")
-    print(f"Labels shape is = {initial_labels.shape}\nData shape is = {data.shape}")
+    print_data_info(initial_labels, data, "BEFORE DROPPING NA")
     # Drop NaN rows from data, # Reset indices after dropping rows
     data = data.dropna().reset_index(drop=True)
     # Ensure labels align with the updated data
@@ -173,21 +192,17 @@ if __name__ == "__main__":
     labels = labels.reset_index(drop=True)
 
     labels = makeLabelsInt(labels)
-    print(f"----- AFTER DROPPING NA -----")
-    print(f"Labels shape is = {initial_labels.shape}\nData shape is = {data.shape}")
+    print_data_info(labels, data, "AFTER DROPPING NA")
 
     data_train, data_val, data_test, labels_train, labels_val, labels_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
     print(f'\nLength of X is = {len(data)}. Length of Y is = {len(labels)}')
 
     print("data shape = {0}\ndata_train shape = {1}\ndata_val shape = {2}\ndata_test shape = {3}".format(
         data.shape, data_train.shape, data_val.shape, data_test.shape))
-    n_clusters_min = 5 # Was initially 2
-    n_clusters_max = 30 # Was initially 10
-    # Define the range for the number of clusters
-    range_n_clusters = range(n_clusters_min, n_clusters_max)  # Desirable range
+    range_n_clusters = range(config["n_clusters_min"], config["n_clusters_max"])  # Desirable range
 
     # Train the tokenizer
-    knn_neighbors = 50
+    knn_neighbors = config["knn_neighbors"]
     kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(data_train, range_n_clusters, knn_neighbors = knn_neighbors)
 
     plot_tsne(np.array(data_train), labels_train, "of data_train")
@@ -198,18 +213,18 @@ if __name__ == "__main__":
     val_token_sequence = kmeans_model.predict(data_val).tolist()
     test_token_sequence = kmeans_model.predict(data_test).tolist()
 
-    window_size = 10  # Length of each sequence
-    stride = 1  # Step size to slide the window (1 ensures maximum overlap)
+    window_size = config["window_size"]  # Length of each sequence
+    stride = config["stride"]  # Step size to slide the window (1 ensures maximum overlap)
 
     train_sequences = create_sequences(train_token_sequence, window_size, stride)
     val_sequences = create_sequences(val_token_sequence, window_size, stride)
     test_sequences = create_sequences(test_token_sequence, window_size, stride)
 
     # Parameters
-    vocab_size = n_clusters_max  # Set vocabulary size based on your tokens
-    embedding_dim = 300
-    window_size_skipgram = 20
-    epochs = 1
+    vocab_size = config["n_clusters_max"]  # Set vocabulary size based on your tokens
+    embedding_dim = config["embedding_dim"]
+    window_size_skipgram = config["window_size_skipgram"]
+    epochs = config["epochs"]
     # loss = "nce" # NEEDs to be IMPLEMENTED FROM SCRATCH
 
     # Train skip-gram model
@@ -238,7 +253,11 @@ if __name__ == "__main__":
         "winSizeSkip": window_size_skipgram,
         "nEmbeddings": embedding_dim
     }
-    subfoldername = "02_Embeddings"
+    subfoldername = config["output_folder"]
+
+    # ----- MAYBE FIX LIKE THIS -----
+    # labels_shuffled = np.concatenate([labels_train, labels_val, labels_test])
+
     SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, indices_all, **name_kwargs)
 
     name_kwargs_train = {
@@ -256,12 +275,3 @@ if __name__ == "__main__":
     SaveEmbeddingsToOutput(train_timeseries_embeddings, labels_train, subfoldername, indices_train, **name_kwargs_train)
     SaveEmbeddingsToOutput(val_timeseries_embeddings, labels_val, subfoldername, indices_val, **name_kwargs_val)
     SaveEmbeddingsToOutput(test_timeseries_embeddings, labels_test, subfoldername, indices_test, **name_kwargs_test)
-
-    # debugging
-    for i in range(10):  # Έλεγχος σε τυχαία 10 δείγματα
-        print(f"Index: {indices_all[i][0]}, Label: {labels[i]}, Embedding First 3 Values: {trainValTest_embeddings[i][:3]}")
-    sorted_indices = np.argsort(indices_all[:, 0])
-    trainValTest_embeddings = trainValTest_embeddings[sorted_indices]
-    labels = labels[sorted_indices]
-
-    print(labels)

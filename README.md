@@ -51,7 +51,7 @@
 
 ## 2025/03/01 - 09
 * Code cleanup + some more work on correct train-val-test split
-## 2025/03/12
+## 2025/03/12 - 13
 * code cleanup to make more readable and remove redundancy
 
 # TO DO

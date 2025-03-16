@@ -120,13 +120,13 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, indices=None, setT
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
-    case_type_str = f"_{case_type}_{setType}_" if setType != "NO" else f"_{case_type}_"
+    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
 
     filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
 
     # Helper function to generate paths dynamically
     def generate_path(prefix):
-        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
+        return f"{subfolderName}/{prefix}_{case_type_str}_{filename_variables}_{formatted_datetime}.csv"
 
     # Writing to CSV with pandas (which is generally faster)
     pd.DataFrame(embeddings).to_csv(generate_path("Embeddings"), index=False, header=False)
@@ -144,7 +144,7 @@ def plot_tsne(data, labels, title):
 
     plt.figure(figsize=(8, 6))
     sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
-    plt.title("t-SNE Visualization" + title)
+    plt.title("t-SNE Visualization " + title)
     plt.xlabel("t-SNE Component 1"); plt.ylabel("t-SNE Component 2")
     plt.show()
 
@@ -256,9 +256,9 @@ if __name__ == "__main__":
     subfoldername = config["output_folder"]
 
     # ----- MAYBE FIX LIKE THIS -----
-    # labels_shuffled = np.concatenate([labels_train, labels_val, labels_test])
-
-    SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, indices_all, **name_kwargs)
+    labels_all = np.concatenate([labels_train, labels_val, labels_test])
+    SaveEmbeddingsToOutput(trainValTest_embeddings, labels_all, subfoldername, indices_all, **name_kwargs)
+  #  SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, indices_all, **name_kwargs)
 
     name_kwargs_train = {
         "train": "Set",

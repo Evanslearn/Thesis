@@ -53,6 +53,8 @@
 * Code cleanup + some more work on correct train-val-test split
 ## 2025/03/12 - 13
 * code cleanup to make more readable and remove redundancy
+## 2025/03/14-16
+* still working on correct train-val-tet split + code cleanup
 
 # TO DO
 * STRATIFICATION

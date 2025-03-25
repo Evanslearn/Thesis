@@ -55,6 +55,8 @@
 * code cleanup to make more readable and remove redundancy
 ## 2025/03/14-16
 * still working on correct train-val-tet split + code cleanup
+## 2025/03/25
+* Did some changes to 02 file, as probably the logic there was wrong (was windowing across multiple rows, instead of windowing across each row)
 
 # TO DO
 * STRATIFICATION

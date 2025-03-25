@@ -1,12 +1,19 @@
+import json
 import os
 from datetime import datetime
 import random
 
 import numpy as np
 import pandas as pd
+import umap
 from matplotlib import pyplot as plt
 from pandas._testing import iloc
+from scipy.stats import zscore
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
+import seaborn as sns
+from sklearn.manifold import TSNE
+import umap.umap_ as umap
 
 def makeLabelsInt(labels):
     # print(labels)
@@ -29,6 +36,7 @@ def returnFilepathToSubfolder(filename, subfolderName):
     return file_path
 
 def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False):
+    print(f"filepath = {filepath}")
     df = pd.read_csv(abspath + filepath, header=None)
 
     if as_series:
@@ -38,32 +46,12 @@ def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False
     print(f"{dataFilename} shape = {df.shape}")
     return df
 
-def doTrainValTestSplit2(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
-    # Create indices for the data
-    indices = np.arange(len(X_data))
-
-    # split into train + (val_test) sets
-    X_train, X_test_val, Y_train, Y_test_val, indices_train, indices_test_val = train_test_split(X_data, Y_targets, indices, test_size=test_val_ratio,
-                                                                random_state=random_state, stratify=Y_targets)
-
-    val_ratio = test_val_ratio * valRatio_fromTestVal
-    print(
-        f'''We have used {test_val_ratio * 100}% of the data for the test+val set. So now, the val_ratio = {valRatio_fromTestVal * 100}%
-    of the val-test data, translates to {val_ratio * 100}% of the total data.''')
-    # split into val + test sets
-    X_test, X_val, Y_test, Y_val, indices_test, indices_val = train_test_split(X_test_val, Y_test_val, indices_test_val, test_size=valRatio_fromTestVal,
-                                                      random_state=random_state, stratify=Y_test_val)
-
-    print(f'train - {len(Y_train)}, \nval - {len(Y_val)},\ntest {len(Y_test)}')
-
-    return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
-
 def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
     # Create indices for the data
     indices = np.arange(len(X_data))
 
     # First split: Train vs (Test + Val)
-    X_train, X_test_val, Y_train, Y_test_val, indices_train, indices_test_val  = train_test_split(X_data, Y_targets, indices, test_size=test_val_ratio,
+    X_train, X_test_val, Y_train, Y_test_val, indices_train, indices_test_val = train_test_split(X_data, Y_targets, indices, test_size=test_val_ratio,
                                                                 random_state=random_state, stratify=Y_targets)
     val_ratio = test_val_ratio * valRatio_fromTestVal
     print(
@@ -71,12 +59,54 @@ def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTe
     of the val-test data, translates to {val_ratio * 100}% of the total data.''')
 
     # Second split: Test vs Val
-    X_test, X_val, Y_test, Y_val, indices_test, indices_val  = train_test_split(X_test_val, Y_test_val, indices_test_val, test_size=valRatio_fromTestVal,
+    X_test, X_val, Y_test, Y_val, indices_test, indices_val = train_test_split(X_test_val, Y_test_val, indices_test_val, test_size=valRatio_fromTestVal,
                                                     random_state=random_state, stratify=Y_test_val)
 
-    print(f"Train: {len(Y_train)}, Val: {len(Y_val)}, Test: {len(Y_test)}")
+    print(f"Train: {len(Y_train)}, \nVal: {len(Y_val)}, \nTest: {len(Y_test)}")
 
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
+
+def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, random_state, title, remove_outliers=True):
+
+    print(f"\n ----- Starting algorithm - {algorithm} -----")
+  #  print("Variance of features:", np.var(data, axis=0))
+    print("Class distribution:", np.bincount(labels))
+
+    # Remove outliers
+    if remove_outliers==True:
+        original_len = len(data)
+
+        z_scores = np.abs(zscore(data))
+        mask = (z_scores < 3).all(axis=1)  # keep only data points within 3 std devs
+        data = data[mask]
+        labels = labels[mask]
+        print("Filtered data shape:", data.shape)
+        print("Filtered class distribution:", np.bincount(labels))
+        removed = original_len - len(data)
+        print(f"Removed {removed} outlier(s)")
+
+
+    """Applies algorithm and plots results."""
+    if algorithm == TSNE:
+    #    pca = PCA(n_components=30, random_state=42)  # Reduce to 30 dimensions
+    #    X_pca = pca.fit_transform(data)
+
+        transformer_alg = TSNE(n_components=2, perplexity=perplexity, method='barnes_hut', max_iter=250, random_state=42)
+  #      transformer_alg = TSNE(n_components=2, perplexity=perplexity, random_state=random_state)
+    elif algorithm == PCA:
+        transformer_alg = PCA(n_components=2, random_state=random_state)
+    elif algorithm == umap.UMAP:
+        transformer_alg = umap.UMAP(n_components=2, random_state=random_state)
+    else:
+        raise ValueError("Invalid algorithm! Use TSNE, PCA, or UMAP.")
+    transformed = transformer_alg.fit_transform(data)
+
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
+    plt.title(f"{algorithm.__name__} Visualization " + title)
+    plt.xlabel(f"{algorithm.__name__} Component 1"); plt.ylabel(f"{algorithm.__name__} Component 2")
+  #  plt.show()
+    print(f" ----- Finished algorithm - {algorithm} -----")
 
 def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.hist(bootstrap_accuracies, bins=50, color='skyblue', edgecolor='black')
@@ -207,21 +237,23 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
 
     if imageflag == "YES":
         fileExtension = "png"
+        save_filename = f"figure_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
     else:
         fileExtension = "csv"
+        save_filename = f"metrics_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
     # Define the new filename for saving the plot
-    save_filename = f"figure_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
 
     subfolderName = "03_ClassificationResults"
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams, ratio_0_to_1_ALL):
+def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams, ratio_0_to_1_ALL):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
     # Convert history.history (dictionary) to DataFrame
     df_history = pd.DataFrame(history.history)
     df_history.insert(0, "Epoch", range(1, len(df_history) + 1)) # Add epoch numbers
+    df_history = df_history.round(6)
 
     # Convert test results to DataFrame
     df_results = pd.DataFrame({
@@ -238,6 +270,16 @@ def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predi
         for i in range(0,len(ratio_0_to_1_ALL)):
             f.write(f"{ratio_0_to_1_ALL[i]}\n")
 
+        # Convert non-serializable objects to strings
+        config_serializable = config.copy()
+        config_serializable["metrics"] = [str(m) if not isinstance(m, str) else m for m in config["metrics"]]
+        config_serializable["optimizer"] = str(config["optimizer"])  # Convert optimizer to string
+        config_serializable["kernel_regularizer_dense"] = str(config["kernel_regularizer_dense"])  # Convert L2
+        f.write("THE WHOLE CONFIG FOLLLOWS:")
+        json.dump(config_serializable, f, indent=4)
+
+        f.write(f"\nlearning_rate = {learning_rate}, Optimizer = {optimizer}")
+
         f.write("\nModel Architecture:\n")
         model.summary(print_fn=lambda x: f.write(x + "\n"))
 
@@ -253,7 +295,7 @@ def saveTrainingMetricsToFile(history, model, training_time, test_metrics, predi
 
         f.write("\nRandom Sample Comparisons:\n")
         rand_index_pred = 5
-        random_numbers = [random.randint(0, actual_labels.shape[0] - 1) for _ in range(5)]
+        random_numbers = [random.randint(0, actual_labels.shape[0] - 1) for _ in range(rand_index_pred)]
         for i in random_numbers:
             f.write(f"For i = {i}, we have:\n")
             f.write(f"Y_predictions[i]     = {predictions[i]}\n")

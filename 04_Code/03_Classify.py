@@ -4,6 +4,12 @@ import time
 import random
 from datetime import datetime
 
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.manifold import TSNE
+import umap.umap_ as umap
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
 
 import pandas as pd
@@ -19,23 +25,23 @@ from keras.regularizers import l2
 
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 
+from imblearn.over_sampling import SMOTE, RandomOverSampler
 ### SciKit-Learn Imports ###
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
 from sklearn.utils import resample
 
 from utils00 import (
     returnFilepathToSubfolder,
     doTrainValTestSplit,
-    doTrainValTestSplit2,
     plotTrainValMetrics,
     plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
-    makeLabelsInt, readCsvAsDataframe
+    makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP
 )
 
-import Paths_HELP03 as fp
+import Help_03_Paths as fp
 
 def print_shapes(name, original, normalized):
     """Helper function to print original and normalized dataset shapes."""
@@ -81,14 +87,24 @@ def calculate_class_ratios(labels_list, names_list):
 embeddingsPath = "/02_Embeddings/"
 folderPath = os.getcwd() + embeddingsPath
 
-#timeSeriesDataPath = "/01_TimeSeriesData/"; embeddingsPath = timeSeriesDataPath; filepath_data = f"Pitt_sR11025.0_2025-01-20_23-11-13_output.csv" #USE THIS TO TEST WITHOUT SIGNAL2VEC
-#data = returnData(filepath_data, "allData")
-
+filepath_data = "Embeddings__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
+filepath_labels = "Labels__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
+fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
 data = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA, "allData")
 labels = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_LABELS, "allLabels", as_series=True)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
 
-#data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
+# When without Signal2Vec
+def whenWithoutSignal2Vec():
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
+    fp.FILEPATH_DATA = filepath_data
+    data = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_data, "allData")
+    labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "allLabels", as_series=True)
+    data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
+    labels = makeLabelsInt(labels)
+    return data, labels, fp.FILEPATH_DATA
+#data, labels, fp.FILEPATH_DATA = whenWithoutSignal2Vec()
 
 val_ratio = 1
 
@@ -113,7 +129,7 @@ def returnDatasplit(needSplitting = "NO"):
         X_data, Y_targets = np.array(data), np.array(labels);
         print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
-        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit2(X_data, Y_targets)
+        X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(X_data, Y_targets)
 
         caseTypeStrings = ["Train", "Val", "Test"]
         indicesStrings = [indices_train, indices_val, indices_test]
@@ -135,19 +151,25 @@ def add_rnn_layers(model, rnn_type, num_layers, units, next_rnn_exists, recurren
 
     use_recurrent_dropout = recurrent_dropout if recurrent_dropout is not None and rnn_type in ["GRU", "LSTM"] else 0.0     # Check if recurrent_dropout is specified and valid (only for GRU/LSTM)
 
+    # Ensure `units` is properly indexed
+    if isinstance(units, list):
+        if len(units) < num_layers:
+            raise ValueError(f"Expected at least {num_layers} units, but got only {len(units)}.")
+        units_to_use = units[:num_layers]  # Use only the required number of units
+    else:
+        units_to_use = [units] * num_layers  # Convert single unit value into a list
+
     for i in range(num_layers - 1):
-        model.add(rnn_layer(units[i] if isinstance(units, list) else units, return_sequences=True, recurrent_dropout=use_recurrent_dropout))
+        model.add(rnn_layer(units_to_use[i] if isinstance(units, list) else units, return_sequences=True, recurrent_dropout=use_recurrent_dropout))
 
     # The last layer should return sequences only if another RNN follows
-    model.add(rnn_layer(units[-1] if isinstance(units, list) else units, return_sequences=next_rnn_exists, recurrent_dropout=use_recurrent_dropout))
+    model.add(rnn_layer(units_to_use[-1] if isinstance(units, list) else units, return_sequences=next_rnn_exists, recurrent_dropout=use_recurrent_dropout))
 
 def check_indicesEqual(indices_step02, indices_all):
     print(f'Indices shape: step2 = {indices_step02.shape}, step3 = {indices_all.shape}')
     if not np.array_equal(indices_step02, indices_all):
         print(f"Condition failed: {indices_step02[0]} != {indices_all[0]}")
         sys.exit()  # Terminate the execution
-    else:
-        print(f"Condition success: indices_step02 == indices_all -> {np.array_equal(indices_step02, indices_all)}")
 
 def calculate_f1(y_true, y_pred):
     # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
@@ -162,6 +184,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     batch_size, epochs = config["batch_size"], config["epochs"]
     loss, metrics = config["loss"], config["metrics"]
     learning_rate, optimizer_class  = config["learning_rate"], config["optimizer"]
+    momentum = config["momentum"]
 
     # Extract RNN layers
     layers = config["layers"]
@@ -194,6 +217,80 @@ def model03_VangRNN(data, labels, needSplitting, config):
     for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
         save_data_to_csv(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
 
+    # Add callbacks for better control
+    early_stop = EarlyStopping(monitor="val_loss", patience=5, min_delta=0.001, restore_best_weights=True)
+    lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
+
+
+    def tryThisTomorrow(X_train, X_val, X_test):
+
+        plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+    #    plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+        plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+        # Normalize data
+     #   X_train, X_val, X_test = X_train / np.max(X_train), X_val / np.max(X_val), X_test / np.max(X_test)
+     #   scaler = StandardScaler()
+     #   X_train = scaler.fit_transform(X_train)
+
+        plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+       # plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+        plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+
+        mean_0 = X_train[Y_train == 0].mean(axis=0)
+        mean_1 = X_train[Y_train == 1].mean(axis=0)
+
+        dist = np.linalg.norm(mean_0 - mean_1)
+        print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
+
+
+
+        print("start smote")
+        # If data is imbalanced, apply SMOTE
+   #     sm = SMOTE(random_state=42, k_neighbors=3)
+   #     X_train_resampled, Y_train_resampled = sm.fit_resample(X_train, Y_train)
+      #  ros = RandomOverSampler(random_state=42)
+     #   X_train_resampled, Y_train_resampled = ros.fit_resample(X_train, Y_train)
+        print("end smote")
+
+        # Build a minimal model
+        model = tf.keras.Sequential([
+            tf.keras.layers.Input(shape=(X_train.shape[1],)),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01)),
+            tf.keras.layers.Dropout(0.4),
+            tf.keras.layers.Dense(1, activation='sigmoid')
+        ])
+
+        # Compile with a lower learning rate
+        optimizer = Adam(learning_rate=0.001)
+        model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
+
+        # Add callbacks for better control
+        early_stop = EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True)
+        lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
+
+        # Train
+        history = model.fit(
+            X_train, Y_train,
+            validation_data=(X_val, Y_val),
+            epochs=60, batch_size=64,
+            callbacks=[early_stop, lr_scheduler]
+        )
+
+        clf = RandomForestClassifier(n_estimators=100, random_state=42)
+        clf.fit(X_train, Y_train)
+        preds = clf.predict(X_val)
+        print(classification_report(Y_val, preds))
+
+  #  tryThisTomorrow(X_train, X_val, X_test)
+
+ #   sys.exit()
+
+
+
+
+
+
     # Normalize the data
  #   x_scaler = MinMaxScaler()
     x_scaler = StandardScaler()
@@ -210,6 +307,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     X_test_normalized = np.expand_dims(X_test_normalized, axis=1)
     print(f"X_train_normalized.shape = {X_train_normalized.shape}")
 
+    print(X_train_normalized.shape[1])
+    print(X_train_normalized.shape[2])
+
     # Define the model
     model = tf.keras.Sequential(name='my-rnn')
     model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
@@ -218,13 +318,14 @@ def model03_VangRNN(data, labels, needSplitting, config):
     add_rnn_layers(model, "SimpleRNN", SIMPLE_layers, units_simple, GRU_layers > 0 or LSTM_layers > 0)
     add_rnn_layers(model, "GRU", GRU_layers, units_gru, LSTM_layers > 0, recurrent_dropout)
     add_rnn_layers(model, "LSTM", LSTM_layers, units_lstm, False, recurrent_dropout)  # No RNN follows LSTM
+    print(f"LSTM Un {units_lstm}")
 
     if layers["BatchNorm"] > 0:
       model.add(tf.keras.layers.BatchNormalization())
 
     if layers["Dense"] > 0:
-        for _ in range(0, layers["Dense"]):
-          model.add(tf.keras.layers.Dense(dense_neurons, activation=activation_dense, kernel_regularizer=kernel_regularizer_dense))
+        for i in range(layers["Dense"]): # Iterate over the list instead of passing it directly
+            model.add(tf.keras.layers.Dense(dense_neurons[i], activation=activation_dense, kernel_regularizer=kernel_regularizer_dense))
 
     if layers["Dropout"] > 0:
       model.add(tf.keras.layers.Dropout(dropout_rate))
@@ -234,16 +335,16 @@ def model03_VangRNN(data, labels, needSplitting, config):
     start_time = time.perf_counter() # Get current time at start
 
   #  learning_rate = 0.007 #0.035 Pitt for ncl=5???
-    momentum = 0.9
- #   optimizer = SGD(learning_rate=learning_rate, momentum=momentum, nesterov=True)
-    optimizer = optimizer_class(learning_rate=learning_rate)
-    print(f"LearningRate = {learning_rate}, Optimizer = {optimizer}")
+    if optimizer_class == SGD:
+        optimizer = optimizer_class(learning_rate=learning_rate, momentum=momentum)
+    else:
+        optimizer = optimizer_class(learning_rate=learning_rate)
+    print(f"\nLearningRate = {learning_rate:.6f}, Optimizer = {optimizer}")
     model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
     model.summary()
 
 #    X_train_normalized = X_train; Y_train_normalized = Y_train; X_val_normalized = X_val; Y_val_normalized = Y_val
-    # Train the model
-    history = model.fit(X_train_normalized, Y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val))
+    history = model.fit(X_train_normalized, Y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val), callbacks=[early_stop, lr_scheduler])
 
     end_time = time.perf_counter() # Get current time at end
     rnn_neural_time = end_time - start_time # Subtract the time at start and time at end, to find the total run time
@@ -288,7 +389,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metric_names}')
-    figureNameParams = f"needSplitting{needSplitting}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
+    figureNameParams = f"needSplitting{needSplitting}_norm{x_scaler}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
@@ -297,41 +398,44 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
 ### Global Configuration Dictionary ###
 CONFIG = {
-    "batch_size": 256,
-    "epochs": 50,
+    "batch_size": 128,
+    "epochs": 60,
     "loss": "binary_crossentropy",
     "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy']
     "optimizer": Adam,
+    "momentum": 0.9, # for SGD
     "units": {
-        "SimpleRNN": [32, 32], # [32, 32]
+        "SimpleRNN": [32, 32, 32], # [32, 32]
         "GRU": [32], # 32
-        "LSTM": [32, 32, 32],  # 32
+        "LSTM": [64, 32, 32],  # 32
     },
     "neurons": {
-        "Dense": 64 # 64
+        "Dense": [64, 64, 64], # 64
     },
     "layers": {
-        "SimpleRNN": 0, # 2
-        "GRU": 1, # 0
+        "SimpleRNN": 1, # 2
+        "GRU": 0, # 0
         "LSTM": 0, # 1
-        "Dense": 1,
-        "Dropout": 0,
+        "Dense": 1, # 1
+        "Dropout": 1,
         "BatchNorm": 0
     },
     "recurrent_dropout": 0.2, # 0.2
     "activation_dense": "relu",
     "dropout": 0.4,
-    "kernel_regularizer_dense": l2(0.001) # None
+    "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
 }
 
-lr_min = 0.0005 # 0.001, 0.035
-lr_max = 0.095 # 0.01
-lr_distinct = 10 # 10
+lr_min = 0.0001 # 0.001, 0.035
+lr_max = 0.01 # 0.01
+lr_distinct = 20 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
-for lr in learning_rate:
-    config = CONFIG.copy()
-    config["learning_rate"] = lr
 
-    modelVangRNN = model03_VangRNN(data, labels, needSplitting="NO", config=config)
-#for lr in learning_rate:
-#    modelVangRNN = model03_VangRNN(data, labels, needSplitting="YES", learning_rate = lr)
+split_options = ["NO"]  # Define as a variable
+for needSplitting in split_options:
+    for lr in learning_rate:
+        config = CONFIG.copy()
+        config["learning_rate"] = lr
+
+        print(f"needSplitting={needSplitting}")
+        modelVangRNN = model03_VangRNN(data, labels, needSplitting=needSplitting, config=config)

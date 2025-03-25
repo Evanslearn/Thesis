@@ -116,6 +116,98 @@ INDICES_FILES_TEST = [
     "Indices__Pitt__testSet_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-16_23-38-20.csv"
 ]
 
+
+def returnFileNames(search_dir, caseType, common_part):
+    import glob
+
+    print(search_dir)
+    # Get all CSV files in the directory
+    csv_files = glob.glob(f"{search_dir}/*.csv")
+
+    # Filter files that contain the common part dynamically
+    matching_files = {f: f for f in csv_files if common_part in f}
+    matching_files = [f for f in csv_files if common_part in f]
+ #   print("All CSV files:", csv_files)
+ #   print("Filtered Matching Files:", matching_files)
+
+    data_train = next((f for f in matching_files if f"Embeddings__{caseType}_trainSet" in f), None)
+    data_val = next((f for f in matching_files if f"Embeddings__{caseType}_valSet" in f), None)
+    data_test = next((f for f in matching_files if f"Embeddings__{caseType}_testSet" in f), None)
+    data_general = next((f for f in matching_files if
+                         f"Embeddings__{caseType}_" in f and all(x not in f for x in ["trainSet", "valSet", "testSet"])),
+                        None)
+
+    # Categorize files based on their naming pattern
+    labels_train = next((f for f in matching_files if f"Labels__{caseType}_trainSet" in f), None)
+    labels_val = next((f for f in matching_files if f"Labels__{caseType}_valSet" in f), None)
+    labels_test = next((f for f in matching_files if f"Labels__{caseType}_testSet" in f), None)
+    labels_general = next((f for f in matching_files if
+                           f"Labels__{caseType}_" in f and all(x not in f for x in ["trainSet", "valSet", "testSet"])),
+                          None)
+
+    indices_train = next((f for f in matching_files if f"Indices__{caseType}_trainSet" in f), None)
+    indices_val = next((f for f in matching_files if f"Indices__{caseType}_valSet" in f), None)
+    indices_test = next((f for f in matching_files if f"Indices__{caseType}_testSet" in f), None)
+    indices_general = next((f for f in matching_files if f"Indices__{caseType}_" in f and all(
+        x not in f for x in ["trainSet", "valSet", "testSet"])), None)
+
+    # Print results
+ #   print(f"Data Train: {data_train}")
+ #   print(f"Data Validation: {data_val}")
+ #   print(f"Data Test: {data_test}")
+ #   print(f"Data General: {data_general}")  # The 4th case
+
+ #   print(f"Labels Train: {labels_train}")
+ #   print(f"Labels Validation: {labels_val}")
+ #   print(f"Labels Test: {labels_test}")
+ #   print(f"Labels General: {labels_general}")  # The 4th case
+
+ #   print(f"Indices Train: {indices_train}")
+ #   print(f"Indices Validation: {indices_val}")
+ #   print(f"Indices Test: {indices_test}")
+ #   print(f"Indices General: {indices_general}")  # The 4th case
+
+    # Return all 12 variables
+    return (labels_train, labels_val, labels_test, labels_general,
+            indices_train, indices_val, indices_test, indices_general,
+            data_train, data_val, data_test, data_general)
+
+
+# Define the common part of the filenames
+common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-17_22-28-43"
+common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings150_2025-03-17_23-13-53"
+#common_part = "nCl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings150_2025-03-18_22-29-54"
+#common_part = "Cl2_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings150_2025-03-19_00-08-20"
+#common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings150_2025-03-19_00-34-37"
+#common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings300_2025-03-19_21-55-42"
+common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-19_22-24-12"
+common_part = "nCl2_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-24_00-31-27"
+common_part = "nCl2_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-25_20-58-41"
+common_part = "nCl5_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-26_00-36-22"
+search_dir = os.getcwd() + "/02_Embeddings"
+# Get the returned file names
+new_files = returnFileNames(search_dir, caseType="Pitt", common_part=common_part)
+# Extract only filenames
+new_files = tuple(os.path.basename(path) for path in new_files)
+
+print(new_files)
+
+LABEL_FILES_TRAIN.append(new_files[0])
+LABEL_FILES_VAL.append(new_files[1])
+LABEL_FILES_TEST.append(new_files[2])
+LABEL_FILES.append(new_files[3])
+
+INDICES_FILES_TRAIN.append(new_files[4])
+INDICES_FILES_VAL.append(new_files[5])
+INDICES_FILES_TEST.append(new_files[6])
+INDICES_FILES.append(new_files[7])
+
+DATA_FILES_TRAIN.append(new_files[8])
+DATA_FILES_VAL.append(new_files[9])
+DATA_FILES_TEST.append(new_files[10])
+DATA_FILES.append(new_files[11])
+
+
 # Always use the last value (latest file)
 FILEPATH_DATA = DATA_FILES[-1]
 FILEPATH_DATA_TRAIN = DATA_FILES_TRAIN[-1]

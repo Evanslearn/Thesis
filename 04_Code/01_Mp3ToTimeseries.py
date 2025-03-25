@@ -224,8 +224,6 @@ def printLabelCounts(labels):
 # Main Workflow
 if __name__ == "__main__":
 
-#    file_path_base = "G:/My Drive/00_AI Master/3 Διπλωματική/05_Data/"
-#    print(file_path_base)
     file_path_base = os.getcwd() + "../05_Data"
     file_path_base = os.path.abspath(os.path.join(os.getcwd(), "..", "05_Data"))
     print(file_path_base)
@@ -271,7 +269,7 @@ if __name__ == "__main__":
 
     frame_length = 2048
     hop_length = 512
-    threshold = 0.02
+    threshold = 0.00
 
     filenameVars = f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
 

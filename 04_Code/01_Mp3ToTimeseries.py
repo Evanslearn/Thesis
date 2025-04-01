@@ -221,6 +221,76 @@ def printLabelCounts(labels):
     print(f"Counts of Control = {labels.count('C')}")
     print(f"Counts of Dementia = {labels.count('D')}")
 
+config = {
+    "sample_rate": int(220 / 2), #int(22050 / 2)
+    "frame_length": 2048,
+    "hop_length": 512,
+    "threshold": 0.02
+}
+
+
+
+def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
+    if len(audio) < hop_length * 2:
+        raise ValueError(f"Audio too short for hop_length={hop_length} (len={len(audio)})")
+
+    try:
+        mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length)
+        spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=sr, hop_length=hop_length)
+        chroma = librosa.feature.chroma_stft(y=audio, sr=sr, hop_length=hop_length)
+
+        # Sanity checks
+        if mfccs.shape[1] < 2 or spectral_centroid.shape[1] < 2 or chroma.shape[1] < 2:
+            raise ValueError(f"Insufficient frames: MFCC={mfccs.shape}, Centroid={spectral_centroid.shape}, Chroma={chroma.shape}")
+
+        # Mean-pool across time axis
+        mfccs_mean = np.mean(mfccs, axis=1)
+        centroid_mean = np.mean(spectral_centroid, axis=1)
+        chroma_mean = np.mean(chroma, axis=1)
+
+        # Final feature vector
+        features = np.concatenate([mfccs_mean, centroid_mean, chroma_mean])
+
+        # Check for NaNs or infs
+        if np.isnan(features).any() or np.isinf(features).any():
+            raise ValueError("Feature vector contains NaN or Inf")
+
+     #   if verbose:
+     #       print(f"✅ Feature vector extracted: shape={features.shape}")
+
+        return features
+
+    except Exception as e:
+        if verbose:
+            print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
+        raise e
+
+
+def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=512):
+    # Step 1: Compute RMS and MFCC
+    rms = librosa.feature.rms(y=audio, hop_length=hop_length).flatten()
+    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length)
+
+    # Step 2: Mask frames with low RMS (likely noise or silence)
+    valid_frames = rms > threshold
+    if not np.any(valid_frames):
+        raise ValueError("No speech detected (all RMS below threshold).")
+
+    # Step 3: Filter MFCC frames
+    mfcc_filtered = mfcc[:, valid_frames]
+
+    # Resample each MFCC to target length
+    mfcc_resampled = np.array([
+        np.interp(np.linspace(0, 1, target_length),
+                  np.linspace(0, 1, mfcc_filtered.shape[1]),
+                  mfcc_filtered[i]) for i in range(n_mfcc)
+    ])
+
+    # Flatten to 1D feature vector
+    return mfcc_resampled.flatten()
+
+
+
 # Main Workflow
 if __name__ == "__main__":
 
@@ -239,7 +309,7 @@ if __name__ == "__main__":
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_path_specific = "Pitt"
     file_path = os.path.join(file_path_base, file_path_specific)
-    sample_rate = int(22050/2)  # Example sampling rate
+    sample_rate = config["sample_rate"]  # Example sampling rate
 
     files = []
     labels = []
@@ -267,11 +337,14 @@ if __name__ == "__main__":
                 file_path_mp3 = join(dirpath, filename)  # Full path to the MP3 file
     printLabelCounts(labels)
 
-    frame_length = 2048
-    hop_length = 512
-    threshold = 0.00
+    frame_length = config["frame_length"]
+    hop_length = config["hop_length"]
+    threshold = config["threshold"]
 
     filenameVars = f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
+
+    time_series_raw_ALL = []
+    labels_raw_ALL = []
 
     time_series_processed_ALL = []
     valid_files = []  # Track filenames that are kept
@@ -285,20 +358,35 @@ if __name__ == "__main__":
             if idx % 20 == 0:
                 print(f"Row number = {idx}")
             # Extract time series from conversation
-            time_series, speech_detected = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
-    #        print(category, folder)
+        #    time_series, speech_detected = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
 
-            if not speech_detected:
-                files_without_speech.append(mp3_file)  # Log the file if no speech is detected
+      #      if not speech_detected:
+       #         files_without_speech.append(mp3_file)  # Log the file if no speech is detected
 
             # Preprocess and generate time series
-            if len(time_series) > 0:
-                time_series_processed_ALL.append(preprocess_time_series(time_series))
-                valid_files.append(mp3_file)
+    #        if len(time_series) > 0:
+     #           time_series_processed_ALL.append(preprocess_time_series(time_series))
+    #            valid_files.append(mp3_file)
 
                 # Find the correct label based on the filename
      #           if mp3_file.startswith(folder):
-                valid_labels.append("C" if category == "Control" else "D")  # Assign label correctly
+     #           valid_labels.append("C" if category == "Control" else "D")  # Assign label correctly
+
+            data, sr = loadMp3AndConvertToTimeseries(mp3_file, sr=sample_rate)
+            time_series_raw_ALL.append(data)
+            labels_raw_ALL.append("C" if category == "Control" else "D")
+
+            try:
+        #        features = extract_audio_features(data, sr, hop_length=hop_length, verbose=True)  # new features
+                features = extract_mfcc_timeseries(data, sr, n_mfcc=13, target_length=40, hop_length=hop_length)
+                processed = preprocess_time_series(features)
+                time_series_processed_ALL.append(processed)
+                valid_files.append(mp3_file)
+                valid_labels.append("C" if category == "Control" else "D")
+
+            except Exception as e:
+                print(f"❌ Error processing file {mp3_file}: {e}")
+                continue
 
     total_timeseries_time = time.time() - start_time
     print(f"Total timeseries time: {total_timeseries_time:.2f} seconds")
@@ -312,10 +400,12 @@ if __name__ == "__main__":
             print(f"  - {file}")
 
     # Now, filter labels based on valid_files
-    createFileLabels(valid_labels, subfolderName, filenameVars, formatted_datetime)
+ #   createFileLabels(valid_labels, subfolderName, filenameVars, formatted_datetime)
     printLabelCounts(valid_labels)
+    createFileLabels(labels_raw_ALL, subfolderName, filenameVars, formatted_datetime)
 
     assert len(time_series_processed_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
     output_filename = os.path.join(file_path_specific, f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
 
-    createFileCsv_simple(time_series_processed_ALL, subfolderName, filenameVars)
+ #   createFileCsv_simple(time_series_processed_ALL, subfolderName, filenameVars)
+    createFileCsv_simple(time_series_raw_ALL, subfolderName, filenameVars)

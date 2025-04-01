@@ -184,6 +184,23 @@ common_part = "nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-1
 common_part = "nCl2_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-24_00-31-27"
 common_part = "nCl2_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-25_20-58-41"
 common_part = "nCl5_nN20_winSize20_stride1_winSizeSkip20_nEmbeddings50_2025-03-26_00-36-22"
+common_part = "nCl5_nN20_winSize30_stride10_winSizeSkip20_nEmbeddings200_2025-03-26_00-58-47"
+common_part = "nCl5_nN20_winSize30_stride10_winSizeSkip20_nEmbeddings200_2025-03-26_01-47-20"
+common_part = "nCl2_nN20_winSize30_stride10_winSizeSkip200_nEmbeddings200_2025-03-26_22-21-24"
+common_part = "scalerMinMaxScaler()_nCl2_nN20_winSize64_stride8_winSizeSkip8_nEmbeddings128_2025-03-26_23-47-45"
+common_part = "scalerMinMaxScaler()_nCl2_nN64_winSize64_stride8_winSizeSkip8_nEmbeddings128_2025-03-27_01-26-03"
+common_part = "scalerMinMaxScaler()_nCl2_nN64_winSize64_stride8_winSizeSkip8_nEmbeddings128_2025-03-27_22-59-44"
+common_part = "nCl2_nN64_winSize64_stride8_winSizeSkip8_nEmbeddings128_2025-03-27_23-09-42"
+common_part = "scalerStandardScaler()_nCl2_nN16_winSize32_stride8_winSizeSkip8_nEmbeddings128_2025-03-28_00-08-46"
+common_part = "scalerStandardScaler()_nCl2_nN16_winSize32_stride8_winSizeSkip8_nEmbeddings128_2025-03-30_22-58-32"
+common_part = "scalernoScaling_nCl2_nN16_winSize32_stride8_winSizeSkip8_nEmbeddings128_2025-03-30_23-54-42"
+common_part = "scalernoScaling_nCl10_nN16_winSize32_stride8_winSizeSkip8_nEmbeddings128_2025-03-31_00-07-35"
+common_part = "scalernoScaling_nCl2_nN16_winSize2_stride8_winSizeSkip8_nEmbeddings128_2025-03-31_00-12-29"
+common_part = "scalernoScaling_nCl1000_nN4_winSize2_stride8_winSizeSkip8_nEmbeddings64_2025-03-31_00-46-46"
+common_part = "scalerStandardScaler()_nCl5000_nN4_winSize2_stride8_winSizeSkip8_nEmbeddings64_2025-03-31_01-24-58"
+common_part = "scalerStandardScaler()_nCl100_nN4_winSize512_stride128_winSizeSkip8_nEmbeddings64_2025-04-01_23-35-19"
+common_part = "scalerMinMaxScaler()_nCl100_nN50_winSize512_stride128_winSizeSkip512_nEmbeddings200_2025-04-02_00-37-43"
+
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names
 new_files = returnFileNames(search_dir, caseType="Pitt", common_part=common_part)

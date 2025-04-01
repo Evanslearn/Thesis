@@ -6,12 +6,13 @@ import pandas as pd
 
 from datetime import datetime
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KNeighborsClassifier
 
 import tensorflow as tf
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Dense, Flatten
 from tensorflow.keras.preprocessing.sequence import skipgrams
@@ -22,12 +23,12 @@ from utils00 import (
     readCsvAsDataframe, plot_tsnePCAUMAP
 )
 
-def find_optimal_clusters(data, range_n_clusters):
+def find_optimal_clusters(data, n_clusters_list):
     """Find the optimal number of clusters using silhouette score."""
     best_n_clusters, best_score, best_model  = None, -1, None
 
-    for n_clusters in range_n_clusters:
-        kmeans = KMeans(n_clusters=n_clusters, random_state=config["random_state"])
+    for n_clusters in n_clusters_list:
+        kmeans = KMeans(n_clusters=n_clusters, n_init=config["n_init"], random_state=config["random_state"])
         cluster_labels = kmeans.fit_predict(data)
         score = silhouette_score(data, cluster_labels)
         print(f"Clusters = {n_clusters} -> Silhouette score = {score}")
@@ -47,9 +48,6 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     # Step 3: Train k-NN classifier
     knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens)
     return kmeans, knn, tokens, n_clusters
-
-def create_sequences(token_sequence, window_size, stride):
-    return [token_sequence[i:i + window_size] for i in range(0, len(token_sequence) - window_size + 1, stride)]
 
 # ----- -----     SKIP GRAM     ----- -----
 def generate_skipgram_pairs(sequence, vocab_size, window_size=2, negative_samples=5):
@@ -101,11 +99,49 @@ def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=1
     print(f"Sample context: {pairs_context[:5]}")
     print(f"Sample target: {pairs_target[:5]}")
 
-
-
     model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1)
 
     return model
+
+def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10, loss="sparse_categorical_crossentropy"):
+    """Train a skip-gram model on the tokenized corpus, respecting conversation boundaries."""
+
+    all_pairs = []
+    all_labels = []
+
+    print(f"🧠 Training skip-gram across {len(corpus)} sequences")
+
+    for idx, sequence in enumerate(corpus):
+        if len(sequence) < 2:
+            continue  # skip very short sequences
+
+        # Generate skip-gram pairs for this sequence only
+        pairs, labels = generate_skipgram_pairs(sequence, vocab_size, window_size)
+        all_pairs.extend(pairs)
+        all_labels.extend(labels)
+
+        if idx < 3:  # Print a few examples
+            print(f"\nSequence {idx} → {sequence[:10]}")
+            print(f"Sample pairs: {pairs[:5]}")
+            print(f"Sample labels: {labels[:5]}")
+
+    # Convert to arrays
+    all_pairs = np.array(all_pairs, dtype=np.int32)
+    all_labels = np.array(all_labels, dtype=np.int32)
+
+    # Split context and target
+    pairs_context, pairs_target = all_pairs[:, 0], all_pairs[:, 1]
+
+    print(f"\nTotal skip-gram pairs: {len(pairs_context)}")
+    print(f"📏 Context shape: {pairs_context.shape}")
+    print(f"🎯 Target shape: {pairs_target.shape}")
+
+    # Build and train the model
+    model = build_skipgram_model(vocab_size, embedding_dim, loss)
+    model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1)
+
+    return model
+
 
 # Function to get embeddings for each sequence directly
 def get_sequence_embedding(token_sequence, model):
@@ -113,25 +149,12 @@ def get_sequence_embedding(token_sequence, model):
     token_embedding = np.array([model.layers[0].get_weights()[0][token] for token in token_sequence])
 
     # ----- COULD TRY THIS INSTEAD OF THE REGULAR MEAN
- #   weights = np.arange(1, len(token_sequence) + 1)  # Linear weight increase
-#    sequence_embedding = np.average(token_embedding, axis=0, weights=weights)
+    weights = np.arange(1, len(token_sequence) + 1)  # Linear weight increase
+    sequence_embedding = np.average(token_embedding, axis=0, weights=weights)
     # Convert to a numpy array and calculate the mean across all tokens in the sequence
-    sequence_embedding = np.mean(np.array(token_embedding), axis=0)
+ #   sequence_embedding = np.mean(np.array(token_embedding), axis=0)
 
     return sequence_embedding
-
-def convertBackIntoTokenEmbeddings(token_sequence, sequences, sequence_embeddings):
-    token_embeddings = np.zeros((len(token_sequence), sequence_embeddings.shape[1]))
-    token_counts = np.zeros(len(token_sequence))
-
-    for i, seq in enumerate(sequences):
-        for j, token in enumerate(seq):
-            token_embeddings[i + j] += sequence_embeddings[i]
-            token_counts[i + j] += 1
-    token_embeddings /= token_counts[:, None]
-
-    print(f"Shape of sequences: {len(sequences)}\nShape of sequence embedding: {token_embeddings.shape}")
-    return token_embeddings
 
 def returnFormattedDateTimeNow():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -160,26 +183,7 @@ def print_data_info(data, labels, stage=""):
     print(f"----- {stage} -----")
     print(f"Labels shape = {labels.shape}, Data shape = {data.shape}")
 
-# Configuration dictionary to store hyperparameters and settings
-config = {
-    "n_clusters_min": 5,        # Min number of clusters for KMeans - 2
-    "n_clusters_max": 6,       # Max number of clusters for KMeans - 10
-    "knn_neighbors": 20,        # Number of neighbors for k-NN - 50
-    "window_size": 20,          # Window size for sequence generation - 10
-    "stride": 1,                # Stride for sequence generation - 1
-    "embedding_dim": 50,       # Dimension of word embeddings - 300
-    "window_size_skipgram": 20, # - 20
-    "epochs": 1,                # Number of training epochs
-    "optimizer_skipgram": 'adam',
-    "skipgram_loss": "sparse_categorical_crossentropy", # could also try nce
-    "batch_size": 128,          # Batch size for training
-    "perplexity": 30,           # t-SNE perplexity
-    "random_state": 42,         # Random state for reproducibility
-    "output_folder": "02_Embeddings"  # Folder for saving embeddings
-}
-
-
-def slice_timeseries_rowwise(data, window_length, stride):
+def slice_timeseries_rowwiseOld(data, window_length, stride):
     segments = []
     origins = []
 
@@ -192,6 +196,47 @@ def slice_timeseries_rowwise(data, window_length, stride):
 
     return np.array(segments), np.array(origins)
 
+def scale_split_data(scaler, data, indices, enable_scaling=False, fit=False):
+    subset = data.iloc[indices].copy()
+    if not enable_scaling:
+        return subset.reset_index(drop=True)
+
+    X = subset.drop(columns=["index"]).copy()
+    X.columns = X.columns.astype(str)
+
+    if fit:
+        scaled_values = scaler.fit_transform(X)
+    else:
+        scaled_values = scaler.transform(X)
+
+    scaled_df = pd.DataFrame(scaled_values, columns=X.columns)
+    scaled_df["index"] = scaled_df.index
+    return scaled_df.reset_index(drop=True)
+
+def group_tokens_by_conversation(tokens, origins):
+    conv_token_map = defaultdict(list)
+    for token, conv_id in zip(tokens, origins):
+        conv_token_map[conv_id].append(token)
+    return conv_token_map
+
+# Configuration dictionary to store hyperparameters and settings
+config = {
+    "n_clusters_min": 2,        # Min number of clusters for KMeans - 2
+    "n_clusters_max": 10,       # Max number of clusters for KMeans - 10
+    "knn_neighbors": 50,        # Number of neighbors for k-NN - 50
+    "window_size": 512,    # 2       # Window size for sequence generation - 10
+    "stride": 128,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 200,       # Dimension of word embeddings - 300
+    "window_size_skipgram": 512, # - 20
+    "epochs": 4,                # Number of training epochs
+    "optimizer_skipgram": 'adam',
+    "skipgram_loss": "sparse_categorical_crossentropy", # could also try nce
+    "batch_size": 128,          # Batch size for training
+    "perplexity": 30,           # t-SNE perplexity
+    "random_state": 42,         # Random state for reproducibility
+    "n_init": 50, #default 10 in kmeans. use 50 to help avoid collapse
+    "output_folder": "02_Embeddings"  # Folder for saving embeddings
+}
 
 # Example Usage
 if __name__ == "__main__":
@@ -201,80 +246,113 @@ if __name__ == "__main__":
     filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
     filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
     filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.0_2025-03-25_17-18-31.csv"
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-26_01-39-56.csv"
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_01-16-49.csv"
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-39-38.csv"
+  #  filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-41-56.csv"
+    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_22-39-34.csv"
+    filepath_data = "Pitt_output_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
+    filepath_data = "Pitt_output_sR110_frameL2048_hopL512_thresh0.02_2025-04-01_23-13-03.csv"
 
     filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
     filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
     filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
     filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.0_2025-03-25_17-18-31.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-26_01-39-56.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_01-16-49.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-39-38.csv"
+  #  filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-41-56.csv"
+    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_22-39-34.csv"
+    filepath_labels = "Pitt_labels_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
+    filepath_labels = "Pitt_labels_sR110_frameL2048_hopL512_thresh0.02_2025-04-01_23-13-03.csv"
 
-    data = readCsvAsDataframe(folderPath, filepath_data)
+
+    def read_padded_csv_with_lengths(filepath, pad_value=0.0):
+        rows = []
+        lengths = []
+        max_len = 0
+
+        with open(filepath, 'r') as f:
+            for line in f:
+                row = [float(val) for val in line.strip().split(',') if val]
+                lengths.append(len(row))
+                max_len = max(max_len, len(row))
+                rows.append(row)
+
+        padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
+        df = pd.DataFrame(padded_rows)
+        return df, lengths
+
+
+    def slice_timeseries_rowwise(data, lengths, window_length, stride):
+        segments = []
+        origins = []
+
+        for idx, row in data.iterrows():
+            row_values = row.values[:lengths[idx]]  # only use the real part
+            for i in range(0, len(row_values) - window_length + 1, stride):
+                segment = row_values[i:i + window_length]
+                segments.append(segment)
+                origins.append(idx)
+
+        return np.array(segments), np.array(origins)
+
+
+
+
+
+#    data = readCsvAsDataframe(folderPath, filepath_data)
+    data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
-    data["index"] = data.index  # Preserve original row index in a column
-    print_data_info(initial_labels, data, "BEFORE DROPPING NA")
+    combined = pd.concat([data, initial_labels.rename("label")], axis=1)
+    combined = combined.dropna().reset_index(drop=True)
 
-    # Drop NaN rows from data, # Reset indices after dropping rows
-    data = data.dropna().reset_index(drop=True)
-    # Ensure labels align with the updated data
-    labels = initial_labels[data.index]
-    labels = labels.reset_index(drop=True)
-
-    labels = makeLabelsInt(labels)
-    print_data_info(labels, data, "AFTER DROPPING NA")
+    data = combined.drop(columns="label")
+    data["index"] = data.index
+    labels = makeLabelsInt(combined["label"])
+    print_data_info(data, labels, "AFTER DROPPING NA")
 
     _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
 
-    # Now use the indices to get real splits — preserving original indices!
-    data_train = data.iloc[indices_train].reset_index(drop=False)
-    data_val = data.iloc[indices_val].reset_index(drop=False)
-    data_test = data.iloc[indices_test].reset_index(drop=False)
+    scaler = "noScaling"
+
+    enable_scaling = True
+    scaler = MinMaxScaler()
+ #   scaler = StandardScaler()
+    # Scale and fit on training
+    data_train = scale_split_data(scaler, data, indices_train, enable_scaling=enable_scaling, fit=True)
+    data_val = scale_split_data(scaler, data, indices_val, enable_scaling=enable_scaling)
+    data_test = scale_split_data(scaler, data, indices_test, enable_scaling=enable_scaling)
 
     labels_train = pd.Series(labels[indices_train]).reset_index(drop=True)
     labels_val = pd.Series(labels[indices_val]).reset_index(drop=True)
     labels_test = pd.Series(labels[indices_test]).reset_index(drop=True)
 
-    print(data_train.columns)
-    print(data_train[0])
 
-    # Drop "index" column before scaling
-    X_train_numerical = data_train.drop(columns=["index"])
-    X_val_numerical = data_val.drop(columns=["index"])
-    X_test_numerical = data_test.drop(columns=["index"])
-
-    # Convert column names to strings (optional, to avoid sklearn type-checking issues)
-    X_train_numerical.columns = X_train_numerical.columns.astype(str)
-    X_val_numerical.columns = X_val_numerical.columns.astype(str)
-    X_test_numerical.columns = X_test_numerical.columns.astype(str)
-
-    # Scale
-    scaler = StandardScaler()
-    train_scaled_values = scaler.fit_transform(X_train_numerical)
-    val_scaled_values = scaler.transform(X_val_numerical)
-    test_scaled_values = scaler.transform(X_test_numerical)
-
-    # Rebuild scaled DataFrames for train, val, test
-    data_train = pd.DataFrame(train_scaled_values, columns=X_train_numerical.columns)
-    data_train["index"] = data_train.index  # use current DataFrame index as conversation ID
-
-    data_val = pd.DataFrame(val_scaled_values, columns=X_val_numerical.columns)
-    data_val["index"] = data_val.index
-
-    data_test = pd.DataFrame(test_scaled_values, columns=X_test_numerical.columns)
-    data_test["index"] = data_test.index
+    lengths_train = [lengths[i] for i in indices_train]
+    lengths_val = [lengths[i] for i in indices_val]
+    lengths_test = [lengths[i] for i in indices_test]
 
 
     print("data shape = {0}\ndata_train shape = {1}\ndata_val shape = {2}\ndata_test shape = {3}".format(
         data.shape, data_train.shape, data_val.shape, data_test.shape))
-    range_n_clusters = range(config["n_clusters_min"], config["n_clusters_max"])  # Desirable range
+    n_clusters_list = range(config["n_clusters_min"], config["n_clusters_max"])  # Desirable range
+    n_clusters_list = [50, 100, 150]
+#    n_clusters_list  = [2, 10, 30, 50, 70, 90, 100, 110, 130, 170, 200, 300]
+  #  n_clusters_list = [100, 500, 1000, 2000, 3000, 5000]
 
     # Segment parameters
-    segment_window_length = 20  # Adjust as needed
-    segment_stride = 20
+    segment_window_length = config["window_size"]
+    segment_stride = config["stride"]
 
     # Slice conversations into smaller time patches per split
-    segments_train, origins_train = slice_timeseries_rowwise(data_train, segment_window_length, segment_stride)
-    segments_val, origins_val = slice_timeseries_rowwise(data_val, segment_window_length, segment_stride)
-    segments_test, origins_test = slice_timeseries_rowwise(data_test, segment_window_length, segment_stride)
+  #  segments_train, origins_train = slice_timeseries_rowwise(data_train, segment_window_length, segment_stride)
+ #   segments_val, origins_val = slice_timeseries_rowwise(data_val, segment_window_length, segment_stride)
+  #  segments_test, origins_test = slice_timeseries_rowwise(data_test, segment_window_length, segment_stride)
+    segments_train, origins_train = slice_timeseries_rowwise(data_train, lengths_train, segment_window_length, segment_stride)
+    segments_val, origins_val = slice_timeseries_rowwise(data_val, lengths_val, segment_window_length, segment_stride)
+    segments_test, origins_test = slice_timeseries_rowwise(data_test, lengths_test, segment_window_length, segment_stride)
 
     # Get labels for each segment
     labels_segments_train = labels_train[origins_train].reset_index(drop=True)
@@ -284,16 +362,15 @@ if __name__ == "__main__":
     print(data_train.columns)
     print(f"Segments_train.shape ->   {segments_train.shape}")
 
-# ---- CAN"T USE cURRENTLY, BECAUSE segments trian might have adata from val too?
- #   scaler = StandardScaler()
-#    segments_train = scaler.fit_transform(segments_train)
- #   segments_val = scaler.transform(segments_val)
- #   segments_test = scaler.transform(segments_test)
-
     # Train the tokenizer
-    kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(segments_train, range_n_clusters, knn_neighbors=config["knn_neighbors"])
-    tokens_val = kmeans_model.predict(segments_val)
-    tokens_test = kmeans_model.predict(segments_test)
+    kmeans_model, knn_model, tokens_train, n_clusters = train_tokenizer(segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"])
+  #  tokens_val = kmeans_model.predict(segments_val)
+ #   tokens_test = kmeans_model.predict(segments_test)
+
+    # Step 3: Token assignment
+    tokens_train = knn_model.predict(segments_train)  # Optional: use classifier output
+    tokens_val = knn_model.predict(segments_val)
+    tokens_test = knn_model.predict(segments_test)
 
     print(tokens_train)
     print(f"tokens_train.shape -> {tokens_train.shape}")
@@ -303,12 +380,6 @@ if __name__ == "__main__":
 
     window_size = config["window_size"]  # Length of each sequence
     stride = config["stride"]  # Step size to slide the window (1 ensures maximum overlap)
-
-    def group_tokens_by_conversation(tokens, origins):
-        conv_token_map = defaultdict(list)
-        for token, conv_id in zip(tokens, origins):
-            conv_token_map[conv_id].append(token)
-        return conv_token_map
 
     # Group tokens by conversation index
     train_token_dict = group_tokens_by_conversation(tokens_train, origins_train)
@@ -324,13 +395,11 @@ if __name__ == "__main__":
     print(f"Length of first sequence: {len(train_token_sequences[0])}")
     print(f"First 10 tokens of first sequence: {train_token_sequences[0][:10]}")
 
-
     # Parameters
     vocab_size = n_clusters  # Set vocabulary size based on your tokens
     embedding_dim = config["embedding_dim"]
     window_size_skipgram = config["window_size_skipgram"]
     epochs = config["epochs"]
-
 
     def nce_loss(y_true, y_pred):
         return tf.nn.nce_loss(
@@ -344,14 +413,15 @@ if __name__ == "__main__":
 #    loss = nce_loss # NEEDs to be IMPLEMENTED FROM SCRATCH
     loss = config['skipgram_loss']
 
-    # Train skip-gram model
-    skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
-    print("Skip-gram model trained!")
+    print("Token Distribution:")
+    tokens, counts = np.unique(tokens_train, return_counts=True)
+    for token, count in zip(tokens, counts):
+        print(f"Token {token}: {count} instances")
 
-    # Step 2: Compute sequence embeddings
- #   train_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in segments_train])
- #   val_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in segments_train])
- #   test_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in segments_train])
+    # Train skip-gram model
+  #  skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
+    skipgram_model = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
+    print("Skip-gram model trained!")
 
     train_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in train_token_sequences])
     val_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in val_token_sequences])
@@ -366,16 +436,14 @@ if __name__ == "__main__":
 
     print(labels_train_seq)
 
-
-  #  train_timeseries_embeddings = convertBackIntoTokenEmbeddings(train_token_sequences, segments_train, train_embeddings)
-  #  val_timeseries_embeddings = convertBackIntoTokenEmbeddings(val_token_sequences, segments_train, val_embeddings)
-  #  test_timeseries_embeddings = convertBackIntoTokenEmbeddings(test_token_sequences, segments_train, test_embeddings)
     trainValTest_embeddings = np.vstack([train_embeddings, val_embeddings, test_embeddings])
     labels_all = np.concatenate([labels_train_seq, labels_val_seq, labels_test_seq])
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
 
+
     name_kwargs = {
+        "scaler": scaler,
         "nCl": n_clusters,
         "nN": config['knn_neighbors'],
         "winSize": window_size,

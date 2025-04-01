@@ -247,7 +247,7 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, training_time, test_metrics, predictions, actual_labels, filepath_data, fileNameParams, ratio_0_to_1_ALL):
+def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels, filepath_data, fileNameParams, ratio_0_to_1_ALL):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
     # Convert history.history (dictionary) to DataFrame
@@ -277,6 +277,9 @@ def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, 
         config_serializable["kernel_regularizer_dense"] = str(config["kernel_regularizer_dense"])  # Convert L2
         f.write("THE WHOLE CONFIG FOLLLOWS:")
         json.dump(config_serializable, f, indent=4)
+
+        f.write("\nTHE FILE PATHS FOLLOW:")
+        json.dump(filepathsAll, f, indent=4)
 
         f.write(f"\nlearning_rate = {learning_rate}, Optimizer = {optimizer}")
 

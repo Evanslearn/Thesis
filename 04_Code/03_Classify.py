@@ -7,8 +7,10 @@ from datetime import datetime
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
 import umap.umap_ as umap
+from sklearn.svm import SVC
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
 
@@ -29,8 +31,9 @@ from imblearn.over_sampling import SMOTE, RandomOverSampler
 ### SciKit-Learn Imports ###
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, confusion_matrix
 from sklearn.utils import resample
+from xgboost import XGBClassifier
 
 from utils00 import (
     returnFilepathToSubfolder,
@@ -117,6 +120,7 @@ def returnDatasplit(needSplitting = "NO"):
     global val_ratio
     print(f"\n----- NEEDS SPLITTING == {needSplitting} -----")
     if needSplitting == "NO":
+        print(f"fp.FOLDER_PATH, fp.FILEPATH_DATA_TRAIN = {fp.FOLDER_PATH}, {fp.FILEPATH_DATA_TRAIN}")
         X_train = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA_TRAIN, "X_train").to_numpy()
         X_val = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA_VAL, "X_val").to_numpy()
         X_test = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA_TEST, "X_test").to_numpy()
@@ -205,6 +209,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = returnDatasplit(needSplitting)
     print(Y_train); print(Y_val); print(Y_test)
+   # print(X_train[5])
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
     check_indicesEqual(indices_step02, indices_all)
@@ -225,15 +230,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     def tryThisTomorrow(X_train, X_val, X_test):
 
         plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-    #    plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-        plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-        # Normalize data
-     #   X_train, X_val, X_test = X_train / np.max(X_train), X_val / np.max(X_val), X_test / np.max(X_test)
-     #   scaler = StandardScaler()
-     #   X_train = scaler.fit_transform(X_train)
-
-        plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-       # plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+      #  plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
         plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
 
         mean_0 = X_train[Y_train == 0].mean(axis=0)
@@ -243,14 +240,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
         print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
 
 
-
-        print("start smote")
-        # If data is imbalanced, apply SMOTE
-   #     sm = SMOTE(random_state=42, k_neighbors=3)
-   #     X_train_resampled, Y_train_resampled = sm.fit_resample(X_train, Y_train)
-      #  ros = RandomOverSampler(random_state=42)
-     #   X_train_resampled, Y_train_resampled = ros.fit_resample(X_train, Y_train)
-        print("end smote")
 
         # Build a minimal model
         model = tf.keras.Sequential([
@@ -277,38 +266,62 @@ def model03_VangRNN(data, labels, needSplitting, config):
             callbacks=[early_stop, lr_scheduler]
         )
 
-        clf = RandomForestClassifier(n_estimators=100, random_state=42)
-        clf.fit(X_train, Y_train)
-        preds = clf.predict(X_val)
-        print(classification_report(Y_val, preds))
-
-  #  tryThisTomorrow(X_train, X_val, X_test)
-
- #   sys.exit()
 
 
+        # Dictionary of models
+        models = {
+            "Logistic Regression": LogisticRegression(max_iter=1000),
+            "SVM (RBF Kernel)": SVC(kernel='rbf'),
+            "Random Forest": RandomForestClassifier(n_estimators=100),
+            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+            # use_label_encoder=False suppresses warning
+        }
+
+        for name, clf in models.items():
+            print(f"\n🔍 Training: {name}")
+            clf.fit(X_train, Y_train)
+
+            preds = clf.predict(X_test)
+            print(classification_report(Y_test, preds))
+
+            acc = accuracy_score(Y_test, preds)
+            print(f"Accuracy: {acc:.4f}")
+            print("Confusion Matrix:")
+            print(confusion_matrix(Y_test, preds))
 
 
 
 
     # Normalize the data
- #   x_scaler = MinMaxScaler()
+    x_scaler = MinMaxScaler()
     x_scaler = StandardScaler()
 
-    X_train_normalized = x_scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-    X_val_normalized = x_scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
-    X_test_normalized = x_scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
+    print(f"X_train_normalized.shape before scaling = {X_train.shape}")
+    if X_train.ndim == 3:
+        X_train_normalized = x_scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
+        X_val_normalized = x_scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
+        X_test_normalized = x_scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
+    else:
+        X_train_normalized = x_scaler.fit_transform(X_train)
+        X_val_normalized = x_scaler.transform(X_val)
+        X_test_normalized = x_scaler.transform(X_test)
+    print(f"X_train_normalized.shape after scaling = {X_train_normalized.shape}")
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
+
+    print(" ----- NOT NORMALIZED -----")
+  #  tryThisTomorrow(X_train, X_val, X_test)
+    print(" ----- NORMALIZED ----- ")
+  #  tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
+   # sys.exit()
+
+    
 
     print(f"X_train_normalized.shape = {X_train_normalized.shape}")
     X_train_normalized = np.expand_dims(X_train_normalized, axis=1)
     X_val_normalized = np.expand_dims(X_val_normalized, axis=1)
     X_test_normalized = np.expand_dims(X_test_normalized, axis=1)
     print(f"X_train_normalized.shape = {X_train_normalized.shape}")
-
-    print(X_train_normalized.shape[1])
-    print(X_train_normalized.shape[2])
 
     # Define the model
     model = tf.keras.Sequential(name='my-rnn')
@@ -339,9 +352,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
         optimizer = optimizer_class(learning_rate=learning_rate, momentum=momentum)
     else:
         optimizer = optimizer_class(learning_rate=learning_rate)
-    print(f"\nLearningRate = {learning_rate:.6f}, Optimizer = {optimizer}")
     model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
     model.summary()
+    print(f"\nLearningRate = {learning_rate:.6f}, Optimizer = {optimizer}")
 
 #    X_train_normalized = X_train; Y_train_normalized = Y_train; X_val_normalized = X_val; Y_val_normalized = Y_val
     history = model.fit(X_train_normalized, Y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val), callbacks=[early_stop, lr_scheduler])
@@ -393,7 +406,16 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
-    saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, predictions.flatten(), Y_test.flatten(), fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL)
+    filepathsAll = {
+        "fp.FILEPATH_DATA_TRAIN": fp.FILEPATH_DATA_TRAIN,
+        "fp.FILEPATH_DATA_VAL": fp.FILEPATH_DATA_VAL,
+        "fp.FILEPATH_DATA_TEST": fp.FILEPATH_DATA_TEST,
+        "fp.FILEPATH_LABELS_TRAIN": fp.FILEPATH_LABELS_TRAIN,
+        "fp.FILEPATH_LABELS_VAL": fp.FILEPATH_LABELS_VAL,
+        "fp.FILEPATH_LABELS_TEST": fp.FILEPATH_LABELS_TEST
+    }
+
+    saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(), fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
 
 ### Global Configuration Dictionary ###
@@ -407,7 +429,7 @@ CONFIG = {
     "units": {
         "SimpleRNN": [32, 32, 32], # [32, 32]
         "GRU": [32], # 32
-        "LSTM": [64, 32, 32],  # 32
+        "LSTM": [32, 32, 32],  # 32
     },
     "neurons": {
         "Dense": [64, 64, 64], # 64
@@ -415,7 +437,7 @@ CONFIG = {
     "layers": {
         "SimpleRNN": 1, # 2
         "GRU": 0, # 0
-        "LSTM": 0, # 1
+        "LSTM": 1, # 1
         "Dense": 1, # 1
         "Dropout": 1,
         "BatchNorm": 0
@@ -426,9 +448,9 @@ CONFIG = {
     "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
 }
 
-lr_min = 0.0001 # 0.001, 0.035
-lr_max = 0.01 # 0.01
-lr_distinct = 20 # 10
+lr_min = 0.001 # 0.001, 0.035
+lr_max = 0.1 # 0.01
+lr_distinct = 30 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 
 split_options = ["NO"]  # Define as a variable

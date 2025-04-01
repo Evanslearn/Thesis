@@ -57,6 +57,8 @@
 * still working on correct train-val-tet split + code cleanup
 ## 2025/03/25
 * Did some changes to 02 file, as probably the logic there was wrong (was windowing across multiple rows, instead of windowing across each row)
+## 2025/04/01
+* Some changes/refactorings to the files. Now extracting raw timeseries from part1, so let's see how that goes
 
 # TO DO
 * STRATIFICATION

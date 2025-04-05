@@ -275,6 +275,7 @@ def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, 
         config_serializable["metrics"] = [str(m) if not isinstance(m, str) else m for m in config["metrics"]]
         config_serializable["optimizer"] = str(config["optimizer"])  # Convert optimizer to string
         config_serializable["kernel_regularizer_dense"] = str(config["kernel_regularizer_dense"])  # Convert L2
+        config_serializable["scaler"] = str(config.get("scaler", ""))
         f.write("THE WHOLE CONFIG FOLLLOWS:")
         json.dump(config_serializable, f, indent=4)
 

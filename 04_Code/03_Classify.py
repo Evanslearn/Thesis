@@ -214,6 +214,15 @@ def model03_VangRNN(data, labels, needSplitting, config):
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
     check_indicesEqual(indices_step02, indices_all)
 
+    filepathsAll = {
+        "fp.FILEPATH_DATA_TRAIN": fp.FILEPATH_DATA_TRAIN,
+        "fp.FILEPATH_DATA_VAL": fp.FILEPATH_DATA_VAL,
+        "fp.FILEPATH_DATA_TEST": fp.FILEPATH_DATA_TEST,
+        "fp.FILEPATH_LABELS_TRAIN": fp.FILEPATH_LABELS_TRAIN,
+        "fp.FILEPATH_LABELS_VAL": fp.FILEPATH_LABELS_VAL,
+        "fp.FILEPATH_LABELS_TEST": fp.FILEPATH_LABELS_TEST
+    }
+
     # save data to a CSV
     subfolderName = "03_ClassificationResults"
     suffix = f"Splitting_{needSplitting}"
@@ -249,10 +258,15 @@ def model03_VangRNN(data, labels, needSplitting, config):
             tf.keras.layers.Dropout(0.4),
             tf.keras.layers.Dense(1, activation='sigmoid')
         ])
+        model.summary()
 
         # Compile with a lower learning rate
-        optimizer = Adam(learning_rate=0.001)
-        model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
+        if optimizer_class == SGD:
+            optimizer = optimizer_class(learning_rate=learning_rate, momentum=momentum)
+        else:
+            optimizer = optimizer_class(learning_rate=learning_rate)
+        model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+      #  model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
 
         # Add callbacks for better control
         early_stop = EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True)
@@ -262,10 +276,13 @@ def model03_VangRNN(data, labels, needSplitting, config):
         history = model.fit(
             X_train, Y_train,
             validation_data=(X_val, Y_val),
-            epochs=60, batch_size=64,
+            epochs=60, batch_size=128,
             callbacks=[early_stop, lr_scheduler]
         )
 
+        predictions = model.predict(X_test)
+        loss_evaluate = model.evaluate(X_test, Y_test)
+        print(loss_evaluate)
 
 
         # Dictionary of models
@@ -290,21 +307,30 @@ def model03_VangRNN(data, labels, needSplitting, config):
             print(confusion_matrix(Y_test, preds))
 
 
-
-
     # Normalize the data
-    x_scaler = MinMaxScaler()
-    x_scaler = StandardScaler()
+    scaler = config["scaler"]
+    def scaleData(scaler, data, enable_scaling=False, fit=False):
+        if not enable_scaling:
+            return data
+
+        if fit:
+            scaled_values = scaler.fit_transform(data)
+        else:
+            scaled_values = scaler.transform(data)
+
+        return scaled_values
+
+
 
     print(f"X_train_normalized.shape before scaling = {X_train.shape}")
     if X_train.ndim == 3:
-        X_train_normalized = x_scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-        X_val_normalized = x_scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
-        X_test_normalized = x_scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
+        X_train_normalized = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
+        X_val_normalized = scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
+        X_test_normalized = scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
     else:
-        X_train_normalized = x_scaler.fit_transform(X_train)
-        X_val_normalized = x_scaler.transform(X_val)
-        X_test_normalized = x_scaler.transform(X_test)
+        X_train_normalized = scaleData(config["scaler"], X_train, enable_scaling=config["enable_scaling"], fit=True)
+        X_val_normalized = scaleData(config["scaler"], X_val, enable_scaling=config["enable_scaling"])
+        X_test_normalized = scaleData(config["scaler"], X_test, enable_scaling=config["enable_scaling"])
     print(f"X_train_normalized.shape after scaling = {X_train_normalized.shape}")
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
@@ -312,36 +338,46 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(" ----- NOT NORMALIZED -----")
   #  tryThisTomorrow(X_train, X_val, X_test)
     print(" ----- NORMALIZED ----- ")
-  #  tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
-   # sys.exit()
+    tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
+ #   sys.exit()
+   # return
 
-    
-
-    print(f"X_train_normalized.shape = {X_train_normalized.shape}")
-    X_train_normalized = np.expand_dims(X_train_normalized, axis=1)
-    X_val_normalized = np.expand_dims(X_val_normalized, axis=1)
-    X_test_normalized = np.expand_dims(X_test_normalized, axis=1)
-    print(f"X_train_normalized.shape = {X_train_normalized.shape}")
+    if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
+    # Only expand dims for RNNs
+        print(f"Before EXPAND DIM --- X_train_normalized.shape = {X_train_normalized.shape}")
+        X_train_normalized = np.expand_dims(X_train_normalized, axis=1)
+        X_val_normalized = np.expand_dims(X_val_normalized, axis=1)
+        X_test_normalized = np.expand_dims(X_test_normalized, axis=1)
+        print(f"After EXPAND DIM --- X_train_normalized.shape = {X_train_normalized.shape}")
 
     # Define the model
-    model = tf.keras.Sequential(name='my-rnn')
-    model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
-
-    # Add layers dynamically
-    add_rnn_layers(model, "SimpleRNN", SIMPLE_layers, units_simple, GRU_layers > 0 or LSTM_layers > 0)
-    add_rnn_layers(model, "GRU", GRU_layers, units_gru, LSTM_layers > 0, recurrent_dropout)
-    add_rnn_layers(model, "LSTM", LSTM_layers, units_lstm, False, recurrent_dropout)  # No RNN follows LSTM
-    print(f"LSTM Un {units_lstm}")
-
-    if layers["BatchNorm"] > 0:
-      model.add(tf.keras.layers.BatchNormalization())
-
-    if layers["Dense"] > 0:
-        for i in range(layers["Dense"]): # Iterate over the list instead of passing it directly
+    model = tf.keras.Sequential(name='My-NN')
+    # Choose model type based on config
+    if SIMPLE_layers + GRU_layers + LSTM_layers == 0:
+        # 🧠 MLP-only path
+        model.add(tf.keras.layers.Input(shape=X_train_normalized.shape[1:], name='input_layer'))
+        for i in range(config["layers"]["Dense"]):
             model.add(tf.keras.layers.Dense(dense_neurons[i], activation=activation_dense, kernel_regularizer=kernel_regularizer_dense))
+        if config["layers"]["Dropout"] > 0:
+            model.add(tf.keras.layers.Dropout(dropout_rate))
+    else:
+        model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
 
-    if layers["Dropout"] > 0:
-      model.add(tf.keras.layers.Dropout(dropout_rate))
+        # Add layers dynamically
+        add_rnn_layers(model, "SimpleRNN", SIMPLE_layers, units_simple, GRU_layers > 0 or LSTM_layers > 0)
+        add_rnn_layers(model, "GRU", GRU_layers, units_gru, LSTM_layers > 0, recurrent_dropout)
+        add_rnn_layers(model, "LSTM", LSTM_layers, units_lstm, False, recurrent_dropout)  # No RNN follows LSTM
+        print(f"LSTM Un {units_lstm}")
+
+        if layers["BatchNorm"] > 0:
+          model.add(tf.keras.layers.BatchNormalization())
+
+        if layers["Dense"] > 0:
+            for i in range(layers["Dense"]): # Iterate over the list instead of passing it directly
+                model.add(tf.keras.layers.Dense(dense_neurons[i], activation=activation_dense, kernel_regularizer=kernel_regularizer_dense))
+
+        if layers["Dropout"] > 0:
+          model.add(tf.keras.layers.Dropout(dropout_rate))
 
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))  # Sigmoid activation for binary classification
 
@@ -386,9 +422,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
     # Extract metric names properly
     metric_names = [m.name if hasattr(m, 'name') else m for m in metrics]
 
- #   formatted_loss = [f'{num:.6f}' for num in loss_evaluate]
-  #  formatted_string = ', '.join(formatted_loss)
- #   print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}\nEvaluate number = {formatted_string}\nwhere loss: {loss} and metrics: {metrics}')
     # Format the loss value and the metrics to match their names
     decimalPoints = 6
     formatted_loss = f"loss = {loss_evaluate[0]:.{decimalPoints}f}"  # Format the loss value
@@ -402,18 +435,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metric_names}')
-    figureNameParams = f"needSplitting{needSplitting}_norm{x_scaler}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
+    figureNameParams = f"needSplitting{needSplitting}_norm{scaler}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
-
-    filepathsAll = {
-        "fp.FILEPATH_DATA_TRAIN": fp.FILEPATH_DATA_TRAIN,
-        "fp.FILEPATH_DATA_VAL": fp.FILEPATH_DATA_VAL,
-        "fp.FILEPATH_DATA_TEST": fp.FILEPATH_DATA_TEST,
-        "fp.FILEPATH_LABELS_TRAIN": fp.FILEPATH_LABELS_TRAIN,
-        "fp.FILEPATH_LABELS_VAL": fp.FILEPATH_LABELS_VAL,
-        "fp.FILEPATH_LABELS_TEST": fp.FILEPATH_LABELS_TEST
-    }
 
     saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(), fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
@@ -421,36 +445,38 @@ def model03_VangRNN(data, labels, needSplitting, config):
 ### Global Configuration Dictionary ###
 CONFIG = {
     "batch_size": 128,
-    "epochs": 60,
+    "epochs": 50,
     "loss": "binary_crossentropy",
-    "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy']
+    "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy'],
+    "enable_scaling": True,
+    "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
     "optimizer": Adam,
     "momentum": 0.9, # for SGD
     "units": {
-        "SimpleRNN": [32, 32, 32], # [32, 32]
+        "SimpleRNN": [64, 32, 32], # [32, 32]
         "GRU": [32], # 32
         "LSTM": [32, 32, 32],  # 32
     },
     "neurons": {
-        "Dense": [64, 64, 64], # 64
+        "Dense": [128, 64, 64], # 64
     },
     "layers": {
-        "SimpleRNN": 1, # 2
+        "SimpleRNN": 0, # 2
         "GRU": 0, # 0
-        "LSTM": 1, # 1
-        "Dense": 1, # 1
+        "LSTM": 0, # 1
+        "Dense": 3, # 1ty
         "Dropout": 1,
-        "BatchNorm": 0
+        "BatchNorm": 1
     },
-    "recurrent_dropout": 0.2, # 0.2
+    "recurrent_dropout": 0.0, # 0.2
     "activation_dense": "relu",
     "dropout": 0.4,
     "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
 }
 
-lr_min = 0.001 # 0.001, 0.035
+lr_min = 0.00001 # 0.001, 0.035
 lr_max = 0.1 # 0.01
-lr_distinct = 30 # 10
+lr_distinct = 50 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 
 split_options = ["NO"]  # Define as a variable

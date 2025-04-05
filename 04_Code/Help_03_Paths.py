@@ -200,6 +200,13 @@ common_part = "scalernoScaling_nCl1000_nN4_winSize2_stride8_winSizeSkip8_nEmbedd
 common_part = "scalerStandardScaler()_nCl5000_nN4_winSize2_stride8_winSizeSkip8_nEmbeddings64_2025-03-31_01-24-58"
 common_part = "scalerStandardScaler()_nCl100_nN4_winSize512_stride128_winSizeSkip8_nEmbeddings64_2025-04-01_23-35-19"
 common_part = "scalerMinMaxScaler()_nCl100_nN50_winSize512_stride128_winSizeSkip512_nEmbeddings200_2025-04-02_00-37-43"
+common_part = "scalerMinMaxScaler()_nCl100_nN50_winSize512_stride512_winSizeSkip512_nEmbeddings200_2025-04-02_18-44-00"
+common_part = "scalerMinMaxScaler()_nCl250_nN50_winSize124_stride256_winSizeSkip512_nEmbeddings512_2025-04-02_23-09-40"
+common_part = "scalerMinMaxScaler()_nCl150_nN50_winSize512_stride256_winSizeSkip10_nEmbeddings512_2025-04-03_02-38-00"
+common_part = "scalerMinMaxScaler()_nCl200_nN50_winSize256_stride256_winSizeSkip10_nEmbeddings512_2025-04-03_19-36-43"
+common_part = "scalerMinMaxScaler()_silhouette0.6251753421958964_nCl1000_nN50_winSize128_stride128_winSizeSkip10_nEmbeddings256_2025-04-03_23-55-12"
+common_part = "scalerMinMaxScaler()_silhouette0.6086212722389982_nCl1000_nN50_winSize64_stride64_winSizeSkip10_nEmbeddings128_2025-04-04_08-25-51"
+common_part = "scalerMinMaxScaler()_silhouette0.6243100137368336_nCl500_nN50_winSize256_stride256_winSizeSkip10_nEmbeddings128_2025-04-05_00-49-04"
 
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names

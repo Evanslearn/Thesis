@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 from os import walk
 from os.path import isfile, join
 import csv
@@ -79,45 +80,24 @@ def pad_or_truncate(audio, target_length):
 def createFileLabels(labels, subfolderName, filenameVars, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
 
     df_labels = pd.DataFrame(labels)
-    filename = file_path_specific + f"_labels" + filenameVars + formatted_datetime + f".csv"
+    filename = file_path_caseName + f"_labels" + filenameVars + formatted_datetime + f".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     df_labels.to_csv(filenameFull, index=False, header=False)
 
     return
 
-def createFileCsv_pandas(padded_data, subfolderName, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
-    start_time = time.time()
-
-    # After all files have been processed, convert to DataFrame and write to CSV
-    df = pd.DataFrame(padded_data)
-    #     df = pd.DataFrame(csv_data, columns=["label", "sampling rate", "length", "FEATURES i to N"])
-    filename = file_path_specific + "_output_" + "sR" + str(sample_rate) + "_" + formatted_datetime + ".csv"
+def write_csv(data, subfolderName, filenamevars, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), use_pandas=True):
+    filename = f"{file_path_caseName}_output_{filenamevars}_{formatted_datetime}" + ".csv"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
 
-    # Writing to CSV with pandas (which is generally faster)
-    df.to_csv(filenameFull, index=False, header=False)
-
-    pandas_writer_time = time.time() - start_time
-    print(f"Pandas Time: {pandas_writer_time:.2f} seconds")
-    print(f"Data written to csv file - {filenameFull}")
-
-def createFileCsv_simple(padded_data, subfolderName, filenameVars, formatted_datetime=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")):
-    filename = file_path_specific + "_output" + filenameVars + formatted_datetime  + ".csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
     start_time = time.time()
+    if use_pandas:
+        pd.DataFrame(data).to_csv(filenameFull, index=False, header=False)
+    else:
+        with open(filenameFull, "w", newline="") as f:
+            csv.writer(f).writerows(data)
 
-    # After all files have been processed, write the data to a CSV file
-    with open(filenameFull, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-
-        #        writer.writerow(["label", "sampling rate", "length", "FEATURES i to N"])
-
-        # Write the rows from processed_data into the CSV file
-        writer.writerows(padded_data)
-
-    csv_writer_time = time.time() - start_time
-    print(f"CSV Writer Time: {csv_writer_time:.2f} seconds")
-    print(f"Data written to csv file - {filenameFull}")
+    print(f"CSV written in {time.time() - start_time:.2f} seconds: {filenameFull}")
 
 def logicForLu():
     # Example for 1 specific file
@@ -127,8 +107,8 @@ def logicForLu():
 #    preprocessed_data = preprocess_data(parsed_data)
 
     file_path_base = "G:/My Drive/00_AI Master/3 Διπλωματική/05_Data/"
-    file_path_specific = "Lu"
-    file_path = os.path.join(file_path_base, file_path_specific)
+    file_path_caseName = "Lu"
+    file_path = os.path.join(file_path_base, file_path_caseName)
 
     print(os.listdir(file_path))
     onlyfiles = [file for file in os.listdir(file_path) if isfile(join(file_path, file))]
@@ -193,13 +173,12 @@ def logicForLu():
         csv_data_padded_ALL.append([labels[i], time_series_sampleRate[i], len(padded_data)] + list(padded_data))
     print(type(padded_data)); print(type(csv_data_padded_ALL))
 
-    print(f"\n\n\nFile Path = file_path_base + file_path_specific")
-    print(f"{file_path} = {file_path_base} + {file_path_specific}")
+    print(f"\n\n\nFile Path = file_path_base + file_path_caseName")
+    print(f"{file_path} = {file_path_base} + {file_path_caseName}")
     print(files)
     print(labels)
     print(len(labels))
-    print(f"Counts of Control = {labels.count('C')}")
-    print(f"Counts of Dementia = {labels.count('D')}")
+    printLabelCounts(labels)
 
     filenameVars = f"_sR{sample_rate}_"
     subfolderName = '01_TimeSeriesData'
@@ -211,18 +190,17 @@ def logicForLu():
     flagCSV = "Yes"
 
     if flagPandas == "Yes":
-        createFileCsv_pandas(padded_data, subfolderName, formatted_datetime)
+        write_csv(padded_data, subfolderName, filenameVars, formatted_datetime)
     if flagCSV == "Yes":
-        createFileCsv_simple(padded_data, filenameVars, subfolderName)
+        write_csv(padded_data, subfolderName, filenameVars, formatted_datetime, use_pandas=False)
         # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
 
 def printLabelCounts(labels):
-    print(f"Length of labels = {len(labels)}")
-    print(f"Counts of Control = {labels.count('C')}")
-    print(f"Counts of Dementia = {labels.count('D')}")
+    counts = Counter(labels)
+    print(f"Label Counts: {dict(counts)}")
 
 config = {
-    "sample_rate": int(220 / 2), #int(22050 / 2)
+    "sample_rate": int(600 / 2), #int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.02
@@ -290,6 +268,23 @@ def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=5
     return mfcc_resampled.flatten()
 
 
+def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
+    labels = []
+    labeled_files = []
+    for dirpath, _, filenames in walk(file_path):
+        # Check if 'Control' or 'Dementia' is part of the directory path
+        if "Control" in dirpath:
+            label = "C"
+        elif "Dementia" in dirpath:
+            label = "D"
+        else:
+            continue  # Skip directories that aren't labeled 'Control' or 'Dementia'
+        for f in filenames:
+            if f.endswith(".mp3"):
+                labels.append(label)
+                labeled_files.append((join(dirpath, f), label))
+    return labels, labeled_files
+
 
 # Main Workflow
 if __name__ == "__main__":
@@ -300,47 +295,26 @@ if __name__ == "__main__":
 
     subfolderName = '01_TimeSeriesData'
 
+    file_path_caseName = "Pitt"
+    file_path = os.path.join(file_path_base, file_path_caseName)
+
+
     categories = {
         "Control": os.path.join(file_path_base, "Pitt/Control/cookie"),
         "Alzheimer": os.path.join(file_path_base, "Pitt/Dementia/cookie")
     }
 
-    # Prepare file paths for output
     formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    file_path_specific = "Pitt"
-    file_path = os.path.join(file_path_base, file_path_specific)
-    sample_rate = config["sample_rate"]  # Example sampling rate
 
-    files = []
-    labels = []
-    time_series_data = []  # List to store the timeseries data for each mp3
-    time_series_sampleRate = []
-
-    csv_data = []
-
-    # Loop through all subdirectories and files in the specified directory
-    for (dirpath, dirnames, filenames) in walk(file_path):
-        # Check if 'Control' or 'Dementia' is part of the directory path
-        if "Control" in dirpath:
-            label = "C"
-        elif "Dementia" in dirpath:
-            label = "D"
-        else:
-            continue  # Skip directories that aren't labeled 'Control' or 'Dementia'
-        for filename in filenames:
-            if filename.endswith(".mp3"):  # Check for mp3 files
-
-                files.append(filename)
-                labels.append(label)  # Append the appropriate label (C or D)
-
-         #       if len(labels) % 40 == 0:                    print(f"   --- Processing file number ---   {len(labels)}")
-                file_path_mp3 = join(dirpath, filename)  # Full path to the MP3 file
+    labels, labeled_files = collect_labeled_files(file_path)
     printLabelCounts(labels)
 
-    frame_length = config["frame_length"]
-    hop_length = config["hop_length"]
-    threshold = config["threshold"]
-
+    sample_rate, frame_length, hop_length, threshold = (
+        config["sample_rate"],
+        config["frame_length"],
+        config["hop_length"],
+        config["threshold"]
+    )
     filenameVars = f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
 
     time_series_raw_ALL = []
@@ -405,7 +379,7 @@ if __name__ == "__main__":
     createFileLabels(labels_raw_ALL, subfolderName, filenameVars, formatted_datetime)
 
     assert len(time_series_processed_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
-    output_filename = os.path.join(file_path_specific, f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
+    output_filename = os.path.join(file_path_caseName, f"_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
 
- #   createFileCsv_simple(time_series_processed_ALL, subfolderName, filenameVars)
-    createFileCsv_simple(time_series_raw_ALL, subfolderName, filenameVars)
+ #   write_csv(time_series_processed_ALL, subfolderName, filenameVars)
+    write_csv(time_series_raw_ALL, subfolderName, filenameVars)

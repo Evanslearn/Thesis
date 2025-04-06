@@ -59,9 +59,10 @@
 * Did some changes to 02 file, as probably the logic there was wrong (was windowing across multiple rows, instead of windowing across each row)
 ## 2025/04/01
 * Some changes/refactorings to the files. Now extracting raw timeseries from part1, so let's see how that goes
+## 2025/04/06
+* Commited changes/refactoring to all files. Files are now easier to use, and more generic/tunable
 
 # TO DO
-* STRATIFICATION
 * Experiment with sampling of the mp3 files?
 * Experiment with windowing, and maybe use a larger window that 5 that I have used?
 * Experiment with Embedding feature count?

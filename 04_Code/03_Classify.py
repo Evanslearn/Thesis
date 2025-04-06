@@ -41,7 +41,8 @@ from utils00 import (
     plotTrainValMetrics,
     plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
-    makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP
+    makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
+    trim_datetime_suffix
 )
 
 import Help_03_Paths as fp
@@ -50,17 +51,6 @@ def print_shapes(name, original, normalized):
     """Helper function to print original and normalized dataset shapes."""
     print(f'{name} shape is = {original.shape}')
     print(f'{name} normalized shape is = {normalized.shape}')
-
-def returnDataLabelsWhenWithoutSignal2Vec(data, labels):
-    data = data.dropna().reset_index(drop=True)
-    # Ensure labels align with the updated data
-    if type(labels) != type(pd.Series):
-        labels_s = pd.Series(labels)
-      #  labels_s = labels_s.iloc[:, 0]  # convert to series
-    labels_s = labels_s[data.index]
-    labels_s = labels_s.reset_index(drop=True)
-
-    return data.to_numpy(), labels_s
 
 def save_data_to_csv(data, labels, subfolderName, suffix, data_type):
     # Helper function to save both data and labels to CSV
@@ -92,7 +82,7 @@ folderPath = os.getcwd() + embeddingsPath
 
 filepath_data = "Embeddings__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
 filepath_labels = "Labels__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
-fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
+#fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
 data = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA, "allData")
 labels = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_LABELS, "allLabels", as_series=True)
 num_classes = len(np.unique(labels))  # Replace with the number of your classes
@@ -104,7 +94,7 @@ def whenWithoutSignal2Vec():
     fp.FILEPATH_DATA = filepath_data
     data = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_data, "allData")
     labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "allLabels", as_series=True)
-    data, labels = returnDataLabelsWhenWithoutSignal2Vec(data, labels)
+    data, labels = returnDataAndLabelsWithoutNA(data, labels)
     labels = makeLabelsInt(labels)
     return data, labels, fp.FILEPATH_DATA
 #data, labels, fp.FILEPATH_DATA = whenWithoutSignal2Vec()
@@ -137,7 +127,7 @@ def returnDatasplit(needSplitting = "NO"):
 
         caseTypeStrings = ["Train", "Val", "Test"]
         indicesStrings = [indices_train, indices_val, indices_test]
-        formatted_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        formatted_datetime = returnFormattedDateTimeNow()
         subfolderName = "03_ClassificationResults"
         for i in range (0, len(caseTypeStrings)):
             df_indices = pd.DataFrame({'Indices': indicesStrings[i]})
@@ -215,9 +205,11 @@ def model03_VangRNN(data, labels, needSplitting, config):
     check_indicesEqual(indices_step02, indices_all)
 
     filepathsAll = {
+        "fp.FILEPATH_DATA": fp.FILEPATH_DATA,
         "fp.FILEPATH_DATA_TRAIN": fp.FILEPATH_DATA_TRAIN,
         "fp.FILEPATH_DATA_VAL": fp.FILEPATH_DATA_VAL,
         "fp.FILEPATH_DATA_TEST": fp.FILEPATH_DATA_TEST,
+        "fp.FILEPATH_LABELS": fp.FILEPATH_LABELS,
         "fp.FILEPATH_LABELS_TRAIN": fp.FILEPATH_LABELS_TRAIN,
         "fp.FILEPATH_LABELS_VAL": fp.FILEPATH_LABELS_VAL,
         "fp.FILEPATH_LABELS_TEST": fp.FILEPATH_LABELS_TEST
@@ -401,6 +393,10 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     predictions = model.predict(X_test_normalized)
 
+    # MAYBE DO THIS TO CONTROL PREDICTION
+    # Apply default threshold (0.5) if not tuning
+    preds_binary = (predictions.flatten() >= 0.5).astype(int)
+
     def custom_formatter(x):
         return f"{x:.6f}"
     np.set_printoptions(formatter={'float': custom_formatter}, linewidth=np.inf)
@@ -482,6 +478,8 @@ learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 split_options = ["NO"]  # Define as a variable
 for needSplitting in split_options:
     for lr in learning_rate:
+        lr = np.round(lr, 8)
+
         config = CONFIG.copy()
         config["learning_rate"] = lr
 

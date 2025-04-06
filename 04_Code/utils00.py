@@ -15,6 +15,9 @@ import seaborn as sns
 from sklearn.manifold import TSNE
 import umap.umap_ as umap
 
+def returnFormattedDateTimeNow():
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
 def makeLabelsInt(labels):
     # print(labels)
     return labels.map({'C': 0, 'D': 1}).to_numpy()
@@ -45,6 +48,15 @@ def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False
 
     print(f"{dataFilename} shape = {df.shape}")
     return df
+
+def returnDataAndLabelsWithoutNA(data, labels):
+
+    combined = pd.concat([data, labels.rename("label")], axis=1)
+    combined = combined.dropna().reset_index(drop=True)
+
+    data = combined.drop(columns="label")
+    data["index"] = data.index
+    return data, combined["label"]
 
 def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
     # Create indices for the data
@@ -307,3 +319,7 @@ def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, 
 
     print(f"All results saved to {filenameFull}!")
     return filenameFull
+
+import re
+def trim_datetime_suffix(common_part):
+    return re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', common_part)

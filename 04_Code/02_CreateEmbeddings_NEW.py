@@ -1,12 +1,13 @@
 import json
 import os
+import random
 import time
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 
-from datetime import datetime
+from keras import Model
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -22,7 +23,7 @@ from tensorflow.keras.preprocessing.sequence import skipgrams
 from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
-    readCsvAsDataframe, plot_tsnePCAUMAP
+    readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA
 )
 
 def find_optimal_clusters(data, n_clusters_list):
@@ -35,8 +36,11 @@ def find_optimal_clusters(data, n_clusters_list):
         start_time = time.perf_counter()  # Get current time at start
 
         kmeans = KMeans(n_clusters=n_clusters, n_init=config["n_init"], random_state=config["random_state"])
-        cluster_labels = kmeans.fit_predict(data)
-        score = silhouette_score(data, cluster_labels)
+        try:
+            cluster_labels = kmeans.fit_predict(data)
+            score = silhouette_score(data, cluster_labels)
+        except:
+            score = -0.001001
         all_Silhouettes.append(score)
 
         end_time = time.perf_counter()  # Get current time at end
@@ -45,6 +49,8 @@ def find_optimal_clusters(data, n_clusters_list):
         print(f"Clusters = {n_clusters} --- Training_Time = {kMeans_time:.6f} --- Silhouette score = {score:.6f}")
         if score > best_score:
             best_n_clusters, best_score, best_model = n_clusters, score, kmeans
+
+
 
     return best_n_clusters, best_model, best_score, all_Silhouettes, all_KMeans_times
 
@@ -62,7 +68,7 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     return kmeans, knn, tokens, n_clusters, best_silhouette, all_Silhouettes, all_KMeans_times
 
 # ----- -----     SKIP GRAM     ----- -----
-def generate_skipgram_pairs(sequence, vocab_size, window_size=2, negative_samples=5):
+def generate_skipgram_pairs(sequence, vocab_size, window_size=2):
     """
     Generate skip-gram pairs using TensorFlow's skipgrams utility.
     """
@@ -70,7 +76,6 @@ def generate_skipgram_pairs(sequence, vocab_size, window_size=2, negative_sample
         sequence,
         vocabulary_size=vocab_size,
         window_size=window_size,
-        negative_samples= negative_samples # Needed by NCE
     )
     pairs = np.array(pairs, dtype=np.int32).reshape(-1, 2)
     labels = np.array(labels, dtype=np.int32)
@@ -86,35 +91,6 @@ def build_skipgram_model(vocab_size, embedding_dim, loss = "sparse_categorical_c
     model.compile(optimizer=config['optimizer_skipgram'], loss=loss)
     return model
 
-def train_skipgram(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10, loss= "sparse_categorical_crossentropy"):
-    """    Train a skip-gram model on the tokenized corpus.    """
-    # Flatten the corpus for skip-gram generation
-    flat_corpus = [token for sequence in corpus for token in sequence]
-    print(f"📏 flat_corpus length: {len(flat_corpus)}")
-    print(f"🧠 Unique tokens: {set(flat_corpus)}")
-    print("Sample sequences:")
-    for seq in corpus[:5]:
-        print(seq)
-
-    assert isinstance(flat_corpus[0], (int, np.integer)), "Expected integer token IDs"
-    # Generate skip-gram pairs
-    pairs, labels = generate_skipgram_pairs(flat_corpus, vocab_size, window_size)
-
-    # Build the skip-gram model
-    model = build_skipgram_model(vocab_size, embedding_dim, loss)
-
-    # Train the model
-    pairs_context, pairs_target = pairs[:, 0], pairs[:, 1]
-
-    print(f"Context shape: {pairs_context.shape}")
-    print(f"Target shape: {pairs_target.shape}")
-    print(f"Sample context: {pairs_context[:5]}")
-    print(f"Sample target: {pairs_target[:5]}")
-
-    model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1)
-
-    return model
-
 def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10, loss="sparse_categorical_crossentropy"):
     """Train a skip-gram model on the tokenized corpus, respecting conversation boundaries."""
 
@@ -123,6 +99,7 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
 
     print(f"🧠 Training skip-gram across {len(corpus)} sequences")
 
+    #  ✅ Respect conversation boundaries
     for idx, sequence in enumerate(corpus):
         if len(sequence) < 2:
             continue  # skip very short sequences
@@ -154,19 +131,115 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
 
     return model, history
 
+class SkipGramNCE(Model):
+    def __init__(self, vocab_size, embedding_dim, num_negative_samples):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim
+        self.num_negative_samples = num_negative_samples
+
+        # "Hidden layer": learns the embeddings
+        self.embedding = Embedding(input_dim=vocab_size, output_dim=embedding_dim, input_length=1, name="embedding_layer")
+
+        # These are the output weights (used in the dot product for prediction)
+        self.nce_weights = self.add_weight(
+            shape=(vocab_size, embedding_dim),
+            initializer="glorot_uniform",
+            trainable=True,
+            name="nce_weights"
+        )
+        self.nce_biases = self.add_weight(
+            shape=(vocab_size,),
+            initializer="zeros",
+            trainable=True,
+            name="nce_biases"
+        )
+
+    def call(self, inputs):
+        # Forward pass returns the embedding
+        return self.embedding(inputs)
+
+    def compute_nce_loss(self, input_tokens, context_tokens):
+        """
+        input_tokens: center words (target tokens)
+        context_tokens: context words (labels)
+        """
+        # Lookup embeddings for the input tokens
+        input_embeds = self.embedding(input_tokens)  # shape = (batch_size, embedding_dim)
+
+        # Compute NCE loss
+        loss = tf.reduce_mean(tf.nn.nce_loss(
+            weights=self.nce_weights,
+            biases=self.nce_biases,
+            labels=tf.reshape(context_tokens, [-1, 1]),
+            inputs=input_embeds,
+            num_sampled=self.num_negative_samples,
+            num_classes=self.vocab_size
+        ))
+        return loss
+def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6, epochs=10, num_negative_samples=5, batch_size=128):
+    all_pairs = []
+    # ✅ Respect conversation boundaries
+    for sequence in corpus:
+        if len(sequence) < 2:
+            continue
+        pairs, _ = skipgrams(sequence, vocabulary_size=vocab_size, window_size=window_size, negative_samples=0)
+        all_pairs.extend(pairs)
+
+    all_pairs = tf.convert_to_tensor(all_pairs, dtype=tf.int32)
+    input_tokens = all_pairs[:, 0]
+    context_tokens = all_pairs[:, 1]
+
+    dataset = tf.data.Dataset.from_tensor_slices((input_tokens, context_tokens))
+    dataset = dataset.shuffle(100000).batch(batch_size)
+
+    model = SkipGramNCE(vocab_size, embedding_dim, num_negative_samples)
+
+    opt_name = config['optimizer_skipgram'].lower() # Adagrad 0.001 To match the paper
+    if opt_name == 'adam':
+        optimizer = tf.keras.optimizers.Adam()
+    elif opt_name == 'adagrad':
+        optimizer = tf.keras.optimizers.Adagrad(learning_rate=0.001)
+    elif opt_name == 'sgd':
+        optimizer = tf.keras.optimizers.SGD()
+    else:
+        raise ValueError(f"Unknown optimizer: {opt_name}")
+
+    history = {"loss": []}
+    for epoch in range(epochs):
+        total_loss = 0
+        steps = 0
+        for batch_inputs, batch_context in dataset:
+            with tf.GradientTape() as tape:
+                loss = model.compute_nce_loss(batch_inputs, batch_context)
+            grads = tape.gradient(loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(grads, model.trainable_variables))
+            total_loss += loss.numpy()
+            steps += 1
+        avg_loss = total_loss / steps
+        history["loss"].append(avg_loss)
+        print(f"Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f}")
+
+    return model, history
+
 # Function to get embeddings for each sequence directly
 def get_sequence_embedding(token_sequence, model):
     """Compute sequence embedding by averaging token embeddings."""
-    token_embedding = np.array([model.layers[0].get_weights()[0][token] for token in token_sequence])
+    if config['skipgram_loss'] == "NCE":
+        token_embedding = np.array([model.embedding.get_weights()[0][token] for token in token_sequence])
+    else:
+        token_embedding = np.array([model.layers[0].get_weights()[0][token] for token in token_sequence])
 
-    # ----- COULD TRY THIS INSTEAD OF THE REGULAR MEAN
-    weights = np.arange(1, len(token_sequence) + 1)  # Linear weight increase
-    sequence_embedding = np.average(token_embedding, axis=0, weights=weights)
+    # Signal2Vec uses Average, but mentions weighted as a potential future study
+    if config["sequenceEmbeddingAveragingMethod"] == "Average":
+        sequence_embedding = np.mean(token_embedding, axis=0)
+    elif config["sequenceEmbeddingAveragingMethod"] == "Weighted":
+        weights = np.arange(1, len(token_sequence) + 1)  # Linear weight increase
+        sequence_embedding = np.average(token_embedding, axis=0, weights=weights)
+    else:
+        raise "NO sequenceEmbeddingAveragingMethod DEFINED"
 
     return sequence_embedding
-
-def returnFormattedDateTimeNow():
-    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, formatted_datetime, indices=None, setType="NO", **kwargs):
 
@@ -190,19 +263,6 @@ def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, formatted_datetime
 def print_data_info(data, labels, stage=""):
     print(f"----- {stage} -----")
     print(f"Labels shape = {labels.shape}, Data shape = {data.shape}")
-
-def slice_timeseries_rowwiseOld(data, window_length, stride):
-    segments = []
-    origins = []
-
-    for idx, row in data.iterrows():
-        row_values = row.drop("index").values  # drop before training
-        for i in range(0, len(row_values) - window_length + 1, stride):
-            segment = row_values[i:i+window_length]
-            segments.append(segment)
-            origins.append(idx)
-
-    return np.array(segments), np.array(origins)
 
 def scale_split_data(scaler, data, indices, enable_scaling=False, fit=False):
     subset = data.iloc[indices].copy()
@@ -240,7 +300,10 @@ def saveResultsFile(all_Silhouettes, all_KMeans_times, n_clusters_list, allDataS
     def generate_path(prefix):
         return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
 
-    df_history = pd.DataFrame(skipgram_history.history)
+    if isinstance(skipgram_history, dict):
+        df_history = pd.DataFrame(skipgram_history)
+    else:
+        df_history = pd.DataFrame(skipgram_history.history)
     df_history.insert(0, "Epoch", range(1, len(df_history) + 1))  # Add epoch numbers
     df_history = df_history.round(6)
 
@@ -309,24 +372,46 @@ def mainLogic():
 
         return np.array(segments), np.array(origins)
 
-
-
-
-
 #    data = readCsvAsDataframe(folderPath, filepath_data)
     data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
-    combined = pd.concat([data, initial_labels.rename("label")], axis=1)
-    combined = combined.dropna().reset_index(drop=True)
-
-    data = combined.drop(columns="label")
-    data["index"] = data.index
-    labels = makeLabelsInt(combined["label"])
+    data, labels = returnDataAndLabelsWithoutNA(data, initial_labels)
+    labels = makeLabelsInt(labels)
     print_data_info(data, labels, "AFTER DROPPING NA")
 
-    _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
+    labelClasses, counts = np.unique(labels, return_counts=True)
+    for label, count in zip(labelClasses, counts):
+        print(f"Token {label}: {count} instances")
+    count_0 = counts[0]
+    count_1 = counts[1]
 
+    # Step 2: Determine which label is the majority class
+    majority_label = 0 if count_0 > count_1 else 1
+    minority_count = min(count_0, count_1)
+    majority_count = max(count_0, count_1)
+
+    # Step 3: Find indices of the majority class
+    labels_array = np.array(labels)
+    majority_indices = np.where(labels_array == majority_label)[0]
+
+    # Step 4: Randomly select excess indices to drop
+    num_to_drop = majority_count - minority_count
+    indices_to_drop = random.sample(list(majority_indices), num_to_drop)
+
+    # Step 5: Create mask to keep the rest
+    keep_mask = np.ones(len(labels), dtype=bool)
+    keep_mask[indices_to_drop] = False
+
+    # Apply mask to labels and any aligned array (e.g., data)
+    labels_balanced = labels_array[keep_mask]
+    data_balanced = data.iloc[keep_mask].reset_index(drop=True)
+    print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
+
+    data, labels = data_balanced, labels_balanced
+
+
+    _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
 
     # Scale and fit on training
     data_train = scale_split_data(config["scaler"], data, indices_train, enable_scaling=config["enable_scaling"], fit=True)
@@ -372,8 +457,12 @@ def mainLogic():
     # Train the tokenizer
     kmeans_model, knn_model, tokens_train, n_clusters, best_silhouette, all_Silhouettes, all_KMeans_times = train_tokenizer(
         segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"])
+    best_silhouette = np.round(best_silhouette, 4)
   #  tokens_val = kmeans_model.predict(segments_val)
  #   tokens_test = kmeans_model.predict(segments_test)
+
+    # Token assignment step — we train a classifier (k-NN) on the clustered segments
+    # as suggested in Signal2Vec: token extraction (KMeans), token assignment (classifier)
 
     # Step 3: Token assignment
     tokens_train = knn_model.predict(segments_train)  # Optional: use classifier output
@@ -409,16 +498,6 @@ def mainLogic():
     window_size_skipgram = config["window_size_skipgram"]
     epochs = config["epochs"]
 
-    def nce_loss(y_true, y_pred):
-        return tf.nn.nce_loss(
-            weights=tf.transpose(y_pred),
-            biases=tf.zeros([y_pred.shape[1]]),
-            labels=tf.reshape(y_true, (-1, 1)),
-            inputs=y_pred,
-            num_sampled=5,  # Negative samples
-            num_classes=y_pred.shape[1]
-        )
-#    loss = nce_loss # NEEDs to be IMPLEMENTED FROM SCRATCH
     loss = config['skipgram_loss']
 
     print("Token Distribution:")
@@ -427,8 +506,11 @@ def mainLogic():
         print(f"Token {token}: {count} instances")
 
     # Train skip-gram model
-  #  skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
-    skipgram_model, skipgram_history = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
+    if loss == "NCE":
+        skipgram_model, skipgram_history = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)
+    else:
+    # skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
+        skipgram_model, skipgram_history = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
     print("Skip-gram model trained!")
 
     train_embeddings = np.array([get_sequence_embedding(seq, skipgram_model) for seq in train_token_sequences])
@@ -449,35 +531,25 @@ def mainLogic():
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
 
-
     name_kwargs = {
         "scaler": config["scaler"],
-        "silhouette": best_silhouette,
+        "silh": best_silhouette,
         "nCl": n_clusters,
         "nN": config['knn_neighbors'],
         "winSize": window_size,
         "stride": stride,
-        "winSizeSkip": window_size_skipgram,
+        "winSizeSG": window_size_skipgram,
+        "SGLoss": loss,
         "nEmbeddings": embedding_dim
     }
     subfoldername = config["output_folder"]
     formatted_datetime = returnFormattedDateTimeNow()
 
     SaveEmbeddingsToOutput(trainValTest_embeddings, labels_all, subfoldername, formatted_datetime, indices_all, **name_kwargs)
- #   SaveEmbeddingsToOutput(trainValTest_embeddings, labels, subfoldername, formatted_datetime, indices_all, **name_kwargs)
 
-    name_kwargs_train = {
-        "train": "Set",
-        **name_kwargs
-    }
-    name_kwargs_val = {
-        "val": "Set",
-        **name_kwargs
-    }
-    name_kwargs_test = {
-        "test": "Set",
-        **name_kwargs
-    }
+    name_kwargs_train = { "train": "Set", **name_kwargs}
+    name_kwargs_val = {"val": "Set", **name_kwargs}
+    name_kwargs_test = {"test": "Set", **name_kwargs}
     SaveEmbeddingsToOutput(train_embeddings, labels_train, subfoldername, formatted_datetime, indices_train, **name_kwargs_train)
     SaveEmbeddingsToOutput(val_embeddings, labels_val, subfoldername, formatted_datetime, indices_val, **name_kwargs_val)
     SaveEmbeddingsToOutput(test_embeddings, labels_test, subfoldername, formatted_datetime, indices_test, **name_kwargs_test)
@@ -495,8 +567,6 @@ def mainLogic():
     }
 
     saveResultsFile(all_Silhouettes, all_KMeans_times, n_clusters_list, allDataShapes, allSegmenthapes, skipgram_history, tokens, counts, subfoldername, formatted_datetime, **name_kwargs)
-
-
 
 
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
@@ -530,22 +600,24 @@ config = {
     "n_clusters_min": 2,        # Min number of clusters for KMeans - 2
     "n_clusters_max": 10,       # Max number of clusters for KMeans - 10
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
-    "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
+    "n_clusters_list": [150, 350, 500, 700, 1000, 1500, 3000], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
+  #  "n_clusters_list": [2000, 3000, 5000, 10000],
     "knn_neighbors": 50,        # Number of neighbors for k-NN - 50
-    "window_size": 64 ,    # 2       # Window size for sequence generation - 10
-    "stride": 64,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 64,       # Dimension of word embeddings - 300
+    "window_size": 32,    # 2       # Window size for sequence generation - 10
+    "stride": 2000,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 48,       # Dimension of word embeddings - 300
     "window_size_skipgram": 10, # - 20
     "epochs": 10,                # Number of training epochs
-    "optimizer_skipgram": 'adam',
-    "skipgram_loss": "sparse_categorical_crossentropy", # could also try nce
+    "optimizer_skipgram": 'adam', # Adagram in nalmpantis paper
+    "skipgram_loss": "NCE", #"sparse_categorical_crossentropy", # "sparse_categorical_crossentropy", "NCE
+    "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"
     "batch_size": 128,          # Batch size for training
     "perplexity": 30,           # t-SNE perplexity
     "random_state": 42,         # Random state for reproducibility
     "n_init": 50, #default 10 in kmeans. use 50 to help avoid collapse
     "output_folder": "02_Embeddings",  # Folder for saving embeddings
-    "enable_scaling": False,
-    "scaler": StandardScaler()  # MinMaxScaler(), StandardScaler(), "noScaling"
+    "enable_scaling": True,
+    "scaler": MinMaxScaler()  # MinMaxScaler(), StandardScaler(), "noScaling"
 }
 
 mainLogic()

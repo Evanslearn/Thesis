@@ -42,7 +42,7 @@ from utils00 import (
     plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
     makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    trim_datetime_suffix
+    trim_datetime_suffix, dropInstancesUntilClassesBalance
 )
 
 import Help_03_Paths as fp
@@ -122,6 +122,9 @@ def returnDatasplit(needSplitting = "NO"):
     else:
         X_data, Y_targets = np.array(data), np.array(labels);
         print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
+
+        # ----- NAKE COUNT OF 0s AND 1s BE THE SAME -----
+        X_data, Y_targets = dropInstancesUntilClassesBalance(X_data, Y_targets)
 
         X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(X_data, Y_targets)
 
@@ -203,6 +206,8 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
     check_indicesEqual(indices_step02, indices_all)
+
+    data, labels = dropInstancesUntilClassesBalance(data, labels)
 
     filepathsAll = {
         "fp.FILEPATH_DATA": fp.FILEPATH_DATA,

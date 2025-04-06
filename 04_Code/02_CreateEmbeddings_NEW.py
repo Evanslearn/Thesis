@@ -23,7 +23,8 @@ from tensorflow.keras.preprocessing.sequence import skipgrams
 from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
-    readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA
+    readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
+    countClassDistribution, dropInstancesUntilClassesBalance
 )
 
 def find_optimal_clusters(data, n_clusters_list):
@@ -380,36 +381,8 @@ def mainLogic():
     labels = makeLabelsInt(labels)
     print_data_info(data, labels, "AFTER DROPPING NA")
 
-    labelClasses, counts = np.unique(labels, return_counts=True)
-    for label, count in zip(labelClasses, counts):
-        print(f"Token {label}: {count} instances")
-    count_0 = counts[0]
-    count_1 = counts[1]
-
-    # Step 2: Determine which label is the majority class
-    majority_label = 0 if count_0 > count_1 else 1
-    minority_count = min(count_0, count_1)
-    majority_count = max(count_0, count_1)
-
-    # Step 3: Find indices of the majority class
-    labels_array = np.array(labels)
-    majority_indices = np.where(labels_array == majority_label)[0]
-
-    # Step 4: Randomly select excess indices to drop
-    num_to_drop = majority_count - minority_count
-    indices_to_drop = random.sample(list(majority_indices), num_to_drop)
-
-    # Step 5: Create mask to keep the rest
-    keep_mask = np.ones(len(labels), dtype=bool)
-    keep_mask[indices_to_drop] = False
-
-    # Apply mask to labels and any aligned array (e.g., data)
-    labels_balanced = labels_array[keep_mask]
-    data_balanced = data.iloc[keep_mask].reset_index(drop=True)
-    print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
-
-    data, labels = data_balanced, labels_balanced
-
+    # ----- NAKE COUNT OF 0s AND 1s BE THE SAME -----
+    data, labels = dropInstancesUntilClassesBalance(data, labels)
 
     _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
 

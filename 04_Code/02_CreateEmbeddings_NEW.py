@@ -24,7 +24,7 @@ from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
     readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    countClassDistribution, dropInstancesUntilClassesBalance
+    countClassDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths
 )
 
 def find_optimal_clusters(data, n_clusters_list):
@@ -343,23 +343,6 @@ def mainLogic():
     timeSeriesDataPath = "/01_TimeSeriesData/"
     folderPath = os.getcwd() + timeSeriesDataPath
 
-    def read_padded_csv_with_lengths(filepath, pad_value=0.0):
-        rows = []
-        lengths = []
-        max_len = 0
-
-        with open(filepath, 'r') as f:
-            for line in f:
-                row = [float(val) for val in line.strip().split(',') if val]
-                lengths.append(len(row))
-                max_len = max(max_len, len(row))
-                rows.append(row)
-
-        padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
-        df = pd.DataFrame(padded_rows)
-        return df, lengths
-
-
     def slice_timeseries_rowwise(data, lengths, window_length, stride):
         segments = []
         origins = []
@@ -377,7 +360,7 @@ def mainLogic():
     data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
-    data, labels = returnDataAndLabelsWithoutNA(data, initial_labels)
+    data, labels = returnDataAndLabelsWithoutNA(data, initial_labels, addIndexColumn=True)
     labels = makeLabelsInt(labels)
     print_data_info(data, labels, "AFTER DROPPING NA")
 
@@ -554,6 +537,7 @@ filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_22
 filepath_data = "Pitt_output_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
 #filepath_data = "Pitt_output_sR110_frameL2048_hopL512_thresh0.02_2025-04-01_23-13-03.csv"
 filepath_data = "Pitt_output_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18-21-08.csv"
+filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
@@ -567,6 +551,7 @@ filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_
 filepath_labels = "Pitt_labels_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
 #filepath_labels = "Pitt_labels_sR110_frameL2048_hopL512_thresh0.02_2025-04-01_23-13-03.csv"
 filepath_labels = "Pitt_labels_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18-21-08.csv"
+filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {

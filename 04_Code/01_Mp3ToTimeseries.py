@@ -265,7 +265,7 @@ def logicForPitt():
 
     #   output_filename = os.path.join(file_path_caseName, f"_sR{sr}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
 
-    write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars)
+    write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
 
 config = {
     "sample_rate": int(600 / 2), #int(22050 / 2)

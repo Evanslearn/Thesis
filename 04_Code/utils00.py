@@ -39,23 +39,34 @@ def returnFilepathToSubfolder(filename, subfolderName):
     return file_path
 
 def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False):
-    print(f"filepath = {filepath}")
-    df = pd.read_csv(abspath + filepath, header=None)
+    full_path = abspath + filepath
+    print(f"Reading file: {full_path}")
 
     if as_series:
-        df = df.iloc[:, 0] if not isinstance(df, pd.Series) else df  # Assigning to df
-        if dataFilename == "data": dataFilename = "labels"
+        df = pd.read_csv(full_path, header=None).iloc[:, 0]
+        print(f"{dataFilename} shape = {df.shape}")
+        return df
 
+    # For non-series, load line by line as arrays (handles variable-length time series)
+    time_series_list = []
+    with open(full_path, 'r') as f:
+        for line in f:
+            values = list(map(float, line.strip().split(",")))
+            time_series_list.append(np.array(values))
+
+    # Convert to DataFrame of dtype=object (non-rectangular)
+    df = pd.DataFrame(time_series_list, dtype=object)
     print(f"{dataFilename} shape = {df.shape}")
     return df
 
-def returnDataAndLabelsWithoutNA(data, labels):
+def returnDataAndLabelsWithoutNA(data, labels, addIndexColumn = False):
 
     combined = pd.concat([data, labels.rename("label")], axis=1)
     combined = combined.dropna().reset_index(drop=True)
 
     data = combined.drop(columns="label")
-    data["index"] = data.index
+    if addIndexColumn == True:
+        data["index"] = data.index
     return data, combined["label"]
 
 def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
@@ -358,3 +369,19 @@ def dropInstancesUntilClassesBalance(data, labels):
     print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
 
     return data_balanced, labels_balanced
+
+def read_padded_csv_with_lengths(filepath, pad_value=0.0):
+    rows = []
+    lengths = []
+    max_len = 0
+
+    with open(filepath, 'r') as f:
+        for line in f:
+            row = [float(val) for val in line.strip().split(',') if val]
+            lengths.append(len(row))
+            max_len = max(max_len, len(row))
+            rows.append(row)
+
+    padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
+    df = pd.DataFrame(padded_rows)
+    return df, lengths

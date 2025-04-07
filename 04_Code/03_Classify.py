@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 ### TensorFlow & Keras Imports ###
 import tensorflow as tf
-from tensorflow import keras
+from tensorflow import keras, sigmoid
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.metrics import MeanSquaredError, Accuracy, Precision, Recall
 from keras.regularizers import l2
@@ -42,10 +42,11 @@ from utils00 import (
     plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
     makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    trim_datetime_suffix, dropInstancesUntilClassesBalance
+    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths
 )
 
-import Help_03_Paths as fp
+def custom_formatter(x):
+    return f"{x:.6f}"
 
 def print_shapes(name, original, normalized):
     """Helper function to print original and normalized dataset shapes."""
@@ -77,27 +78,99 @@ def calculate_class_ratios(labels_list, names_list):
         ratios.append(ratio)
     return ratios
 
-embeddingsPath = "/02_Embeddings/"
-folderPath = os.getcwd() + embeddingsPath
 
-filepath_data = "Embeddings__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
-filepath_labels = "Labels__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
-#fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
-data = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA, "allData")
-labels = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_LABELS, "allLabels", as_series=True)
-num_classes = len(np.unique(labels))  # Replace with the number of your classes
+### Global Configuration Dictionary ###
+CONFIG = {
+    "split_options": ["YES"],
+    "batch_size": 128,
+    "epochs": 50,
+    "loss": "binary_crossentropy",
+    "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy'],
+    "enable_scaling": True,
+    "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
+    "optimizer": SGD,
+    "momentum": 0.9, # for SGD
+    "units": {
+        "SimpleRNN": [64, 32, 32], # [32, 32]
+        "GRU": [32], # 32
+        "LSTM": [32, 32, 32],  # 32
+    },
+    "neurons": {
+        "Dense": [128, 32, 64], # 64
+    },
+    "layers": {
+        "SimpleRNN": 0, # 2
+        "GRU": 0, # 0
+        "LSTM": 0, # 1
+        "Dense": 2, # 1ty
+        "Dropout": 1,
+        "BatchNorm": 1
+    },
+    "recurrent_dropout": 0.0, # 0.2
+    "activation_dense": "relu",
+    "dropout": 0.4,
+    "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
+}
+
+lr_min = 0.0001 # 0.001, 0.035
+lr_max = 0.1 # 0.01
+lr_distinct = 10 # 10
+learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
+
+
+#embeddingsPath = "/02_Embeddings/"
+#folderPath = os.getcwd() + embeddingsPath
+
+#filepath_data = "Embeddings__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
+#filepath_labels = "Labels__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
+filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
+filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
+
+if CONFIG['split_options']:
+    import Help_03_Paths as fp
+else:
+    # Dummy placeholder so `fp` still exists without valid paths
+    class DummyFP:
+        pass
+    fp = DummyFP()
+if not CONFIG['split_options']:
+    # Clear any accidental usage of paths
+    fp.FILEPATH_DATA = None
+    fp.FILEPATH_LABELS = None
+    fp.FILEPATH_DATA_TRAIN = None
+    fp.FILEPATH_DATA_VAL = None
+    fp.FILEPATH_DATA_TEST = None
+    fp.FILEPATH_LABELS_TRAIN = None
+    fp.FILEPATH_LABELS_VAL = None
+    fp.FILEPATH_LABELS_TEST = None
+    fp.FILEPATH_INDICES = None
+    fp.FILEPATH_INDICES_TRAIN = None
+    fp.FILEPATH_INDICES_VAL = None
+    fp.FILEPATH_INDICES_TEST = None
+    fp.FOLDER_PATH = os.getcwd() + "/01_TimeSeriesData/"  # Raw folder fallback
+
 
 # When without Signal2Vec
-def whenWithoutSignal2Vec():
-    filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-    filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-    fp.FILEPATH_DATA = filepath_data
-    data = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_data, "allData")
-    labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "allLabels", as_series=True)
+def whenWithoutSignal2Vec(filepath_data, filepath_labels):
+    fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
+ #   data = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_data, "data")
+    labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "labels", as_series=True)
+
+    folderPath = os.getcwd() + "/01_TimeSeriesData/"
+    data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
+
+    print(f"BEFORE DROPNA + PADDING -> data.shape {data.shape}")
+    # Clean first
+ #   data, labels = returnDataAndLabelsWithoutNA(data, labels)
+    # Pad AFTER filtering
+ #   data, _ = pad_variable_length_timeseries(data)
+
     data, labels = returnDataAndLabelsWithoutNA(data, labels)
+    print(f"AFTER DROPNA + PADDING -> data.shape {data.shape}")
+
     labels = makeLabelsInt(labels)
-    return data, labels, fp.FILEPATH_DATA
-#data, labels, fp.FILEPATH_DATA = whenWithoutSignal2Vec()
+    return data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS
+data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS = whenWithoutSignal2Vec(filepath_data, filepath_labels)
 
 val_ratio = 1
 
@@ -124,7 +197,7 @@ def returnDatasplit(needSplitting = "NO"):
         print(f'\nLength of X is = {len(X_data)}. Length of Y is = {len(Y_targets)}')
 
         # ----- NAKE COUNT OF 0s AND 1s BE THE SAME -----
-        X_data, Y_targets = dropInstancesUntilClassesBalance(X_data, Y_targets)
+     #   X_data, Y_targets = dropInstancesUntilClassesBalance(X_data, Y_targets)
 
         X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(X_data, Y_targets)
 
@@ -137,6 +210,11 @@ def returnDatasplit(needSplitting = "NO"):
             filename = "Indices" + caseTypeStrings[i] + "_" + formatted_datetime + ".csv"
             filenameFull = returnFilepathToSubfolder(filename, subfolderName)
             df_indices.to_csv(filenameFull, index=False, header=False)
+
+        # SHOULD BE EMPTY ARRAYS
+        print("Train/Val overlap:", np.intersect1d(indices_train, indices_val))
+        print("Train/Test overlap:", np.intersect1d(indices_train, indices_test))
+        print("Val/Test overlap:", np.intersect1d(indices_val, indices_test))
 
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
 
@@ -202,12 +280,11 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test = returnDatasplit(needSplitting)
     print(Y_train); print(Y_val); print(Y_test)
-   # print(X_train[5])
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
-    check_indicesEqual(indices_step02, indices_all)
+  #  check_indicesEqual(indices_step02, indices_all)
 
-    data, labels = dropInstancesUntilClassesBalance(data, labels)
+  #  data, labels = dropInstancesUntilClassesBalance(data, labels)
 
     filepathsAll = {
         "fp.FILEPATH_DATA": fp.FILEPATH_DATA,
@@ -235,9 +312,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     def tryThisTomorrow(X_train, X_val, X_test):
 
-        plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-      #  plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
-        plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings")
+   #     plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
+   #     plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
+    #    plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
 
         mean_0 = X_train[Y_train == 0].mean(axis=0)
         mean_1 = X_train[Y_train == 1].mean(axis=0)
@@ -270,16 +347,16 @@ def model03_VangRNN(data, labels, needSplitting, config):
         lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
 
         # Train
-        history = model.fit(
-            X_train, Y_train,
-            validation_data=(X_val, Y_val),
-            epochs=60, batch_size=128,
-            callbacks=[early_stop, lr_scheduler]
-        )
+   #     history = model.fit(
+   #         X_train, Y_train,
+   #         validation_data=(X_val, Y_val),
+  #          epochs=60, batch_size=128,
+   #         callbacks=[early_stop, lr_scheduler]
+   #     )
 
-        predictions = model.predict(X_test)
-        loss_evaluate = model.evaluate(X_test, Y_test)
-        print(loss_evaluate)
+   #     predictions = model.predict(X_test)
+    #    loss_evaluate = model.evaluate(X_test, Y_test)
+    #    print(loss_evaluate)
 
 
         # Dictionary of models
@@ -295,13 +372,67 @@ def model03_VangRNN(data, labels, needSplitting, config):
             print(f"\n🔍 Training: {name}")
             clf.fit(X_train, Y_train)
 
-            preds = clf.predict(X_test)
-            print(classification_report(Y_test, preds))
+            # ---- Validation evaluation ----
+            val_preds = clf.predict(X_val)
+            print(f"\n📊 Validation Performance for {name}:")
+            print(classification_report(Y_val, val_preds))
+            val_acc = accuracy_score(Y_val, val_preds)
+            print(f"Validation Accuracy: {val_acc:.4f}")
+            print("Validation Confusion Matrix:")
+            print(confusion_matrix(Y_val, val_preds))
 
-            acc = accuracy_score(Y_test, preds)
-            print(f"Accuracy: {acc:.4f}")
-            print("Confusion Matrix:")
-            print(confusion_matrix(Y_test, preds))
+            # ---- Test evaluation ----
+            test_preds = clf.predict(X_test)
+            print(f"\n📊 Test Performance for {name}:")
+            print(classification_report(Y_test, test_preds))
+            test_acc = accuracy_score(Y_test, test_preds)
+            print(f"Test Accuracy: {test_acc:.4f}")
+            print("Test Confusion Matrix:")
+            print(confusion_matrix(Y_test, test_preds))
+
+
+
+            # Predict both sets
+            val_preds = clf.predict(X_val)
+            test_preds = clf.predict(X_test)
+
+            # Get reports as dicts
+            val_report = classification_report(Y_val, val_preds, output_dict=True)
+            test_report = classification_report(Y_test, test_preds, output_dict=True)
+
+            # Convert to DataFrames
+            val_df = pd.DataFrame(val_report).transpose()
+            test_df = pd.DataFrame(test_report).transpose()
+
+            # Add a column to indicate the split
+            val_df["set"] = "validation"
+            test_df["set"] = "test"
+
+            # Combine them
+            combined_df = pd.concat([val_df, test_df], axis=0)
+
+            # Optional: reorder for clarity
+            combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
+
+            print(f"\n📋 Combined classification report for {name}:")
+            print(combined_df.round(2))
+
+            np.set_printoptions(formatter={'float': custom_formatter}, linewidth=np.inf)
+            print(f'Predictions shape = {test_preds.shape}');
+            print(f'Y_test_normalized shape = {Y_test.shape}')
+
+            if hasattr(clf, "predict_proba"):
+                y_proba_test = clf.predict_proba(X_test)[:, 1]  # probability of class 1
+            elif hasattr(clf, "decision_function"):  # e.g., SVM
+                y_scores = clf.decision_function(X_test)
+                y_proba_test = sigmoid(y_scores)  # You can define a sigmoid if you want probs
+            else:
+                y_proba_test = clf.predict(X_test)  # fallback, hard labels
+            if isinstance(y_proba_test, tf.Tensor):
+                y_proba_test = y_proba_test.numpy()
+            print(f'pred probab = {y_proba_test.T}')
+            print(f'predictions = {test_preds.T}')
+            print(f'real labels = {Y_test}')
 
 
     # Normalize the data
@@ -332,11 +463,15 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
 
+    for labelSet in [Y_train, Y_val, Y_test]:
+        plt.plot(labelSet)
+        plt.show()
+
     print(" ----- NOT NORMALIZED -----")
-  #  tryThisTomorrow(X_train, X_val, X_test)
+    tryThisTomorrow(X_train, X_val, X_test)
     print(" ----- NORMALIZED ----- ")
     tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
- #   sys.exit()
+    sys.exit()
    # return
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
@@ -402,12 +537,10 @@ def model03_VangRNN(data, labels, needSplitting, config):
     # Apply default threshold (0.5) if not tuning
     preds_binary = (predictions.flatten() >= 0.5).astype(int)
 
-    def custom_formatter(x):
-        return f"{x:.6f}"
     np.set_printoptions(formatter={'float': custom_formatter}, linewidth=np.inf)
     print(f'Predictions shape = {predictions.shape}'); print(f'Y_test_normalized shape = {Y_test.shape}')
 
-    print(f'predictions = {predictions.T}'); print(f'actual labels = {Y_test}')
+    print(f'predictions = {predictions.T}'); print(f'real labels = {Y_test}')
 
     rand_index_pred = 5
     random_numbers = [random.randint(0, Y_test.shape[0]-1) for _ in range(rand_index_pred)]
@@ -443,44 +576,8 @@ def model03_VangRNN(data, labels, needSplitting, config):
     saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(), fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
 
-### Global Configuration Dictionary ###
-CONFIG = {
-    "batch_size": 128,
-    "epochs": 50,
-    "loss": "binary_crossentropy",
-    "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy'],
-    "enable_scaling": True,
-    "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
-    "optimizer": Adam,
-    "momentum": 0.9, # for SGD
-    "units": {
-        "SimpleRNN": [64, 32, 32], # [32, 32]
-        "GRU": [32], # 32
-        "LSTM": [32, 32, 32],  # 32
-    },
-    "neurons": {
-        "Dense": [128, 64, 64], # 64
-    },
-    "layers": {
-        "SimpleRNN": 0, # 2
-        "GRU": 0, # 0
-        "LSTM": 0, # 1
-        "Dense": 3, # 1ty
-        "Dropout": 1,
-        "BatchNorm": 1
-    },
-    "recurrent_dropout": 0.0, # 0.2
-    "activation_dense": "relu",
-    "dropout": 0.4,
-    "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
-}
 
-lr_min = 0.00001 # 0.001, 0.035
-lr_max = 0.1 # 0.01
-lr_distinct = 50 # 10
-learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
-
-split_options = ["NO"]  # Define as a variable
+split_options = CONFIG['split_options'] # Define as a variable
 for needSplitting in split_options:
     for lr in learning_rate:
         lr = np.round(lr, 8)

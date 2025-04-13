@@ -24,7 +24,7 @@ from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
     readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    countClassDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths
+    countClassDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type
 )
 
 def find_optimal_clusters(data, n_clusters_list):
@@ -365,7 +365,7 @@ def mainLogic():
     print_data_info(data, labels, "AFTER DROPPING NA")
 
     # ----- NAKE COUNT OF 0s AND 1s BE THE SAME -----
-    data, labels = dropInstancesUntilClassesBalance(data, labels)
+  #  data, labels = dropInstancesUntilClassesBalance(data, labels)
 
     _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
 
@@ -487,16 +487,17 @@ def mainLogic():
 
     indices_all = np.vstack([indices_train.reshape(-1, 1), indices_val.reshape(-1, 1), indices_test.reshape(-1, 1)])
 
+    scalerName = return_scaler_type(str(config.get("scaler", "")), config['enable_scaling'])
     name_kwargs = {
-        "scaler": config["scaler"],
-        "silh": best_silhouette,
+        "scaler": scalerName,
+        "sil": best_silhouette,
         "nCl": n_clusters,
         "nN": config['knn_neighbors'],
-        "winSize": window_size,
-        "stride": stride,
-        "winSizeSG": window_size_skipgram,
+        "wSize": window_size,
+        "str": stride,
+        "wSizeSG": window_size_skipgram,
         "SGLoss": loss,
-        "nEmbeddings": embedding_dim
+        "nEmbd": embedding_dim
     }
     subfoldername = config["output_folder"]
     formatted_datetime = returnFormattedDateTimeNow()
@@ -560,16 +561,16 @@ config = {
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
     "n_clusters_list": [150, 350, 500, 700, 1000, 1500, 3000], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
-    "knn_neighbors": 50,        # Number of neighbors for k-NN - 50
-    "window_size": 32,    # 2       # Window size for sequence generation - 10
-    "stride": 2000,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 48,       # Dimension of word embeddings - 300
-    "window_size_skipgram": 10, # - 20
+    "knn_neighbors": 15,        # Number of neighbors for k-NN - 50
+    "window_size": 1024,    # 2       # Window size for sequence generation - 10
+    "stride": 512,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 200,       # Dimension of word embeddings - 300
+    "window_size_skipgram": 6, # - 20
     "epochs": 10,                # Number of training epochs
-    "optimizer_skipgram": 'adam', # Adagram in nalmpantis paper
+    "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper
     "skipgram_loss": "NCE", #"sparse_categorical_crossentropy", # "sparse_categorical_crossentropy", "NCE
     "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"
-    "batch_size": 128,          # Batch size for training
+    "batch_size": 64,          # Batch size for training
     "perplexity": 30,           # t-SNE perplexity
     "random_state": 42,         # Random state for reproducibility
     "n_init": 50, #default 10 in kmeans. use 50 to help avoid collapse
@@ -577,5 +578,6 @@ config = {
     "enable_scaling": True,
     "scaler": MinMaxScaler()  # MinMaxScaler(), StandardScaler(), "noScaling"
 }
+# e.g. paper -> embedding dim = 300, window size = 6, etc
 
 mainLogic()

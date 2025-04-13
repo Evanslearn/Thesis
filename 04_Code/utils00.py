@@ -38,6 +38,17 @@ def returnFilepathToSubfolder(filename, subfolderName):
 
     return file_path
 
+
+def return_scaler_type(scaler, enable_scaling):
+    if "MinMax" in scaler:
+        scalerName = "MinMax"
+    elif "Standard" in scaler:
+        scalerName = "Standard"
+
+    if enable_scaling != True:
+        scalerName = "NoScaler"
+    return scalerName
+
 def readCsvAsDataframe(abspath, filepath, dataFilename = "data", as_series=False):
     full_path = abspath + filepath
     print(f"Reading file: {full_path}")

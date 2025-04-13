@@ -42,7 +42,7 @@ from utils00 import (
     plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
     makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths
+    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type
 )
 
 def custom_formatter(x):
@@ -81,7 +81,7 @@ def calculate_class_ratios(labels_list, names_list):
 
 ### Global Configuration Dictionary ###
 CONFIG = {
-    "split_options": ["YES"],
+    "split_options": ["NO"], # "YES", "NO"
     "batch_size": 128,
     "epochs": 50,
     "loss": "binary_crossentropy",
@@ -183,6 +183,8 @@ def returnDatasplit(needSplitting = "NO"):
     global val_ratio
     print(f"\n----- NEEDS SPLITTING == {needSplitting} -----")
     if needSplitting == "NO":
+        fp.FILEPATH_DATA = fp.FILEPATH_DATA_TRAIN.replace("_trainSet", "")
+        print(f"fp.FOLDER_PATH, fp.FILEPATH_DATA = {fp.FOLDER_PATH}, {fp.FILEPATH_DATA}")
         print(f"fp.FOLDER_PATH, fp.FILEPATH_DATA_TRAIN = {fp.FOLDER_PATH}, {fp.FILEPATH_DATA_TRAIN}")
         X_train = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA_TRAIN, "X_train").to_numpy()
         X_val = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_DATA_VAL, "X_val").to_numpy()
@@ -434,9 +436,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
             print(f'predictions = {test_preds.T}')
             print(f'real labels = {Y_test}')
 
-
     # Normalize the data
     scaler = config["scaler"]
+    scalerName = return_scaler_type(str(config.get("scaler", "")), config['enable_scaling'])
     def scaleData(scaler, data, enable_scaling=False, fit=False):
         if not enable_scaling:
             return data
@@ -447,8 +449,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
             scaled_values = scaler.transform(data)
 
         return scaled_values
-
-
 
     print(f"X_train_normalized.shape before scaling = {X_train.shape}")
     if X_train.ndim == 3:
@@ -465,13 +465,13 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     for labelSet in [Y_train, Y_val, Y_test]:
         plt.plot(labelSet)
-        plt.show()
+    #    plt.show()
 
     print(" ----- NOT NORMALIZED -----")
     tryThisTomorrow(X_train, X_val, X_test)
     print(" ----- NORMALIZED ----- ")
     tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
-    sys.exit()
+ #   sys.exit()
    # return
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
@@ -569,7 +569,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metric_names}')
-    figureNameParams = f"needSplitting{needSplitting}_norm{scaler}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
+    figureNameParams = f"{needSplitting}split_{scalerName}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 

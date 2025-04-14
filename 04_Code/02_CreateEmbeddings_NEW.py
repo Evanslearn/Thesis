@@ -24,7 +24,7 @@ from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
     readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    countClassDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type
+    returnDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type
 )
 
 def find_optimal_clusters(data, n_clusters_list):
@@ -331,9 +331,7 @@ def saveResultsFile(all_Silhouettes, all_KMeans_times, n_clusters_list, allDataS
         f.write("\nSKIPGRAM MODEL HISTORY:")
         df_history.to_csv(f, index=False)
 
-        f.write("\nToken Distribution:")
-        for token, count in zip(tokens, counts):
-            f.write(f"Token {token}: {count} instances")
+        returnDistribution(tokens, "Token", file=f)
 
     return
 
@@ -456,10 +454,7 @@ def mainLogic():
 
     loss = config['skipgram_loss']
 
-    print("Token Distribution:")
-    tokens, counts = np.unique(tokens_train, return_counts=True)
-    for token, count in zip(tokens, counts):
-        print(f"Token {token}: {count} instances")
+    tokens, counts = returnDistribution(tokens_train)
 
     # Train skip-gram model
     if loss == "NCE":

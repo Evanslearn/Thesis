@@ -346,14 +346,25 @@ import re
 def trim_datetime_suffix(common_part):
     return re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', common_part)
 
-def countClassDistribution(labels):
-    labelClasses, counts = np.unique(labels, return_counts=True)
-    for label, count in zip(labelClasses, counts):
-        print(f"Token {label}: {count} instances")
-    return labelClasses, counts
+def returnDistribution(dataToCount, name="Token", file=None, display=True):
+    output_lines = [f"{name} Distribution:"]
+    tokens, counts = np.unique(dataToCount, return_counts=True)
+    for token, count in zip(tokens, counts):
+        output_lines.append(f"{name} {token}: {count} instances")
+
+    # Output to file if file is given, else print to terminal
+    if file:
+        for line in output_lines:
+            file.write(line + "\n")
+    else:
+        if display:
+            for line in output_lines:
+                print(line)
+
+    return tokens, counts
 
 def dropInstancesUntilClassesBalance(data, labels):
-    labelClasses, counts = countClassDistribution(labels)
+    labelClasses, counts = returnDistribution(labels, name="Label")
     count_0 = counts[0]
     count_1 = counts[1]
 
@@ -380,6 +391,45 @@ def dropInstancesUntilClassesBalance(data, labels):
     print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
 
     return data_balanced, labels_balanced
+
+def plot_token_distribution(data, name="Token", bins=30, title=None, save_path=None, show=True, stats=None, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot histogram (blue bars)
+    sns.histplot(
+        data,
+        bins=bins,
+        color="#4A90E2",
+        edgecolor="white",
+        linewidth=1.2,
+        alpha=0.9,
+        ax=ax,
+        stat="density"  # Or "count" if using older seaborn
+    )
+
+    # Now overlay KDE separately (black line)
+    sns.kdeplot(
+        data,
+        color="black",
+        linewidth=2,
+        ax=ax
+    )
+
+    ax.set_xlabel(name, fontsize=14)
+    ax.set_ylabel("Density", fontsize=14)
+    ax.set_title(title or f"{name} Distribution", fontsize=16, weight='bold')
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
+    ax.tick_params(labelsize=12)
+
+    if stats:
+        legend_text = (
+            f"Mean: {stats['mean']:.2f}\n"
+            f"Std: {stats['std']:.2f}\n"
+            f"Count: {stats['count']}"
+        )
+        ax.legend([legend_text], loc="upper right", fontsize=12, frameon=True, framealpha=0.9)
+
 
 def read_padded_csv_with_lengths(filepath, pad_value=0.0):
     rows = []

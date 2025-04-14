@@ -7,7 +7,10 @@ import pandas as pd
 import time
 import librosa
 import numpy as np
-from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow
+from matplotlib import pyplot as plt
+
+from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, plot_token_distribution
+
 
 def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
     # Load MP3 with file_path
@@ -195,6 +198,7 @@ def logicForPitt():
     valid_files = []  # Track filenames that are kept
     valid_labels = []  # Store labels for the kept files
     files_without_speech = []  # Track files with no speech detected
+    metadata_ALL = []
 
     start_time = time.time()
     for idx, (mp3_file, label) in enumerate(labeled_files):
@@ -241,6 +245,8 @@ def logicForPitt():
             # ✅ STEP 4: Logging feature shape
             if config.get("verbose"):
                 duration_sec = len(audio) / sr
+                shape = output_timeseries.shape
+                metadata_ALL.append((os.path.basename(mp3_file), duration_sec, shape, label))
                 print(f"✅ {os.path.basename(mp3_file)} | Duration: {duration_sec:.2f}s | Feature shape: {output_timeseries.shape} | Label: {label}")
 
         except Exception as e:
@@ -259,7 +265,64 @@ def logicForPitt():
     # Now, filter labels based on valid_files
     assert len(output_timeseries_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
 
-    filenameVars = f"_{feature_type}_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
+    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "shape", "label"])
+    print(df_metadata.head())
+
+    labels = ["ALL", "C", "D"]
+  #  fig, axs = plt.subplots(1, len(labels), figsize=(6 * len(labels), 5), constrained_layout=True)
+    fig, axs = plt.subplots(len(labels), 1, figsize=(8, 5 * len(labels)), constrained_layout=True)
+
+    for i, label in enumerate(labels):
+        if label == "ALL":
+            subset = df_metadata
+        else:
+            subset = df_metadata[df_metadata["label"] == label]
+
+        if not subset.empty:
+            print(f"\nLabel: {label}")
+            durations, counts = returnDistribution(subset["duration"], f"Duration for Label {label}", display=False)
+
+            duration_mean = subset["duration"].mean()
+            duration_std = subset["duration"].std()
+            duration_count = subset["duration"].count()
+
+            print(f"  Duration Mean: {duration_mean:.2f}s, Std: {duration_std:.2f}s, Count: {duration_count}")
+
+            # Plot using the updated function, passing the correct axes
+            plot_token_distribution(
+                data=subset["duration"],
+                name="Duration (s)",
+                bins=50,
+                title=f"{label} Labels",
+                stats={
+                    "mean": duration_mean,
+                    "std": duration_std,
+                    "count": duration_count
+                },
+                ax=axs[i]
+            )
+    # After plotting everything, unify the X-axis range
+    common_xlim = (0, df_metadata["duration"].max())
+    for ax in axs:
+        ax.set_xlim(common_xlim)
+
+    plt.suptitle("Duration Distributions by Label", fontsize=18, weight='bold')
+    plt.show()
+
+    filenameVars = f"_{feature_type}_sR{sample_rate}"
+
+    # Only include if they are used in this feature type
+    if feature_type in ["mfcc", "audio_features"]:
+        filenameVars += f"_hopL{hop_length}"
+
+    if feature_type in ["mfcc"]:
+        filenameVars += f"_thresh{threshold}"
+
+    if feature_type in ["audio_features", "raw"]:
+        filenameVars += f"_frameL{frame_length}"
+
+    filenameVars += "_"
+   # filenameVars = f"_{feature_type}_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
  #   printLabelCounts(valid_labels)
     write_csv(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
 
@@ -268,7 +331,7 @@ def logicForPitt():
     write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
 
 config = {
-    "sample_rate": int(600 / 2), #int(22050 / 2)
+    "sample_rate": None, #int(600 / 2), # None, int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.02,

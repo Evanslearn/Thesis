@@ -9,7 +9,8 @@ import librosa
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, plot_token_distribution
+from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, plot_token_distribution, \
+    extract_duration_and_samplerate, plot_colName_distributions
 
 
 def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
@@ -187,6 +188,13 @@ def logicForPitt():
     labels, labeled_files = collect_labeled_files(file_path)
     printLabelCounts(labels)
 
+    metadata_ALL = extract_duration_and_samplerate(labeled_files)
+    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "sample_rate", "label"])
+  #  df_metadata.to_csv("duration_report.csv", index=False)
+    plot_colName_distributions(df_metadata, "duration")
+    plot_colName_distributions(df_metadata, "sample_rate")
+
+
     sample_rate, frame_length, hop_length, threshold = (
         config["sample_rate"],
         config["frame_length"],
@@ -268,46 +276,8 @@ def logicForPitt():
     df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "shape", "label"])
     print(df_metadata.head())
 
-    labels = ["ALL", "C", "D"]
-  #  fig, axs = plt.subplots(1, len(labels), figsize=(6 * len(labels), 5), constrained_layout=True)
-    fig, axs = plt.subplots(len(labels), 1, figsize=(8, 5 * len(labels)), constrained_layout=True)
-
-    for i, label in enumerate(labels):
-        if label == "ALL":
-            subset = df_metadata
-        else:
-            subset = df_metadata[df_metadata["label"] == label]
-
-        if not subset.empty:
-            print(f"\nLabel: {label}")
-            durations, counts = returnDistribution(subset["duration"], f"Duration for Label {label}", display=False)
-
-            duration_mean = subset["duration"].mean()
-            duration_std = subset["duration"].std()
-            duration_count = subset["duration"].count()
-
-            print(f"  Duration Mean: {duration_mean:.2f}s, Std: {duration_std:.2f}s, Count: {duration_count}")
-
-            # Plot using the updated function, passing the correct axes
-            plot_token_distribution(
-                data=subset["duration"],
-                name="Duration (s)",
-                bins=50,
-                title=f"{label} Labels",
-                stats={
-                    "mean": duration_mean,
-                    "std": duration_std,
-                    "count": duration_count
-                },
-                ax=axs[i]
-            )
-    # After plotting everything, unify the X-axis range
-    common_xlim = (0, df_metadata["duration"].max())
-    for ax in axs:
-        ax.set_xlim(common_xlim)
-
-    plt.suptitle("Duration Distributions by Label", fontsize=18, weight='bold')
-    plt.show()
+    # df_metadata built from processed outputs
+    plot_colName_distributions(df_metadata, title="Processed Duration Distribution")
 
     filenameVars = f"_{feature_type}_sR{sample_rate}"
 
@@ -331,7 +301,7 @@ def logicForPitt():
     write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
 
 config = {
-    "sample_rate": None, #int(600 / 2), # None, int(22050 / 2)
+    "sample_rate": 100, #int(600 / 2), # None, int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.02,

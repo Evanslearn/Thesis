@@ -416,11 +416,11 @@ def plot_token_distribution(data, name="Token", bins=30, title=None, save_path=N
         ax=ax
     )
 
-    ax.set_xlabel(name, fontsize=14)
-    ax.set_ylabel("Density", fontsize=14)
+    ax.set_xlabel(name, fontsize=18)
+    ax.set_ylabel("Density", fontsize=18)
     ax.set_title(title or f"{name} Distribution", fontsize=16, weight='bold')
     ax.grid(axis='y', linestyle='--', alpha=0.5)
-    ax.tick_params(labelsize=12)
+    ax.tick_params(labelsize=16)
 
     if stats:
         legend_text = (
@@ -428,7 +428,7 @@ def plot_token_distribution(data, name="Token", bins=30, title=None, save_path=N
             f"Std: {stats['std']:.2f}\n"
             f"Count: {stats['count']}"
         )
-        ax.legend([legend_text], loc="upper right", fontsize=12, frameon=True, framealpha=0.9)
+        ax.legend([legend_text], loc="upper right", fontsize=18, frameon=True, framealpha=0.9)
 
 
 def read_padded_csv_with_lengths(filepath, pad_value=0.0):
@@ -446,3 +446,94 @@ def read_padded_csv_with_lengths(filepath, pad_value=0.0):
     padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
     df = pd.DataFrame(padded_rows)
     return df, lengths
+
+
+import os
+import soundfile as sf
+
+def extract_duration_and_samplerate(labeled_files, verbose=True):
+    """
+    Returns a list of tuples: (filename, duration_sec, sample_rate, label)
+    Safely extracts duration and sampling rate without loading full audio.
+    """
+    metadata = []
+
+    for idx, (mp3_file, label) in enumerate(labeled_files):
+        if verbose and idx % 20 == 0:
+            print(f"🔍 Checking file #{idx}: {mp3_file}")
+
+        try:
+            info = sf.info(mp3_file)
+            sr = info.samplerate
+            duration_sec = info.frames / sr
+
+            metadata.append((
+                os.path.basename(mp3_file),
+                round(duration_sec, 2),
+                sr,
+                label
+            ))
+
+        except Exception as e:
+            print(f"❌ Failed to read {mp3_file}: {e}")
+            metadata.append((
+                os.path.basename(mp3_file),
+                "ERROR",
+                "ERROR",
+                label
+            ))
+
+    return metadata
+
+
+
+def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "C", "D"), title="Duration Distributions by Label", bins=50):
+    """
+    Plots duration histograms with KDE overlays per label from a metadata DataFrame.
+
+    Parameters:
+    - df_metadata: DataFrame with at least ["duration", "label"] columns
+    - labels: Tuple or list of labels to plot (default: ["ALL", "C", "D"])
+    - title: Plot title
+    - bins: Number of histogram bins
+    """
+    fig, axs = plt.subplots(len(labels), 1, figsize=(8, 5 * len(labels)), gridspec_kw={'hspace': 0.1}, constrained_layout=True)
+
+    for i, label in enumerate(labels):
+        if label == "ALL":
+            subset = df_metadata
+        else:
+            subset = df_metadata[df_metadata["label"] == label]
+
+        if not subset.empty:
+            print(f"\nLabel: {label}")
+            colName_Values = subset[colName]
+
+            colName_mean = colName_Values.mean()
+            colName_std = colName_Values.std()
+            colName_count = colName_Values.count()
+
+            print(f"{colName} Mean: {colName_mean:.2f}s, Std: {colName_std:.2f}s, Count: {colName_count}")
+
+            plot_token_distribution(
+                data=colName_Values,
+                name=f"{colName} (s)",
+                bins=bins,
+                title=f"{label} Labels",
+                stats={
+                    "mean": colName_mean,
+                    "std": colName_std,
+                    "count": colName_count
+                },
+                ax=axs[i]
+            )
+
+
+    percentile_99 = np.percentile(df_metadata[colName], 99) # Calculate the percentile
+    common_xlim = (0, df_metadata[colName].max()) # Normalize X-axis across plots
+    for ax in axs:
+        ax.set_xlim([0, percentile_99]) # Set x-axis limit to 99th percentile
+   #     ax.set_xlim(common_xlim)
+
+    plt.suptitle(title, fontsize=20, weight='bold')
+    plt.show()

@@ -1,5 +1,7 @@
 import json
 import os
+
+import librosa
 import soundfile as sf
 from datetime import datetime
 import random
@@ -119,7 +121,7 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     return filenameFull
 
 def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
-                              filepath_data, fileNameParams, ratio_0_to_1_ALL, L2distance_All):
+                              filepath_data, fileNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
     # Convert history.history (dictionary) to DataFrame
@@ -168,6 +170,12 @@ def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, 
         f.write("\nTest Set Metrics:\n")
         for metric_name, metric_value in test_metrics.items():
             f.write(f"{metric_name},{metric_value}\n")
+
+        f.write("\nCONFUSION MATRIX FOLLOWS:\n")
+        df_conf = pd.DataFrame(cm_raw)
+        df_conf.to_csv(f, index=False); f.write("\n")
+        df_conf = pd.DataFrame(cm_norm)
+        df_conf.to_csv(f, index=False, header=True, float_format="%.3f"); f.write("\n")
 
         f.write("\nPredictions vs Actual Labels:\n")
         df_results.to_csv(f, index=False)
@@ -252,7 +260,22 @@ def read_padded_csv_with_lengths(filepath, pad_value=0.0):
     df = pd.DataFrame(padded_rows)
     return df, lengths
 
+def analyze_audio(file_path, target_sr=44100):
+    # Load audio (converts to mono by default)
+    y, sr = librosa.load(file_path, sr=target_sr)
 
+    # Duration in seconds
+    duration = librosa.get_duration(y=y, sr=sr)
+
+    # Perform FFT to get frequency components
+    fft = np.abs(np.fft.rfft(y))
+    freqs = np.fft.rfftfreq(len(y), 1 / sr)
+
+    # Threshold to ignore noise (e.g., 1% of max)
+    threshold = 0.01 * np.max(fft)
+    max_freq = freqs[fft > threshold].max() if any(fft > threshold) else 0
+
+    return sr, duration, max_freq
 def extract_duration_and_samplerate(labeled_files, verbose=True):
     """
     Returns a list of tuples: (filename, duration_sec, sample_rate, label)

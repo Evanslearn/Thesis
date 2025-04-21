@@ -11,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
 import umap.umap_ as umap
 from sklearn.svm import SVC
+from keras import backend as K
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
 
@@ -31,7 +32,8 @@ from imblearn.over_sampling import SMOTE, RandomOverSampler
 ### SciKit-Learn Imports ###
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, confusion_matrix, \
+    ConfusionMatrixDisplay
 from sklearn.utils import resample
 from xgboost import XGBClassifier
 
@@ -43,7 +45,9 @@ from utils00 import (
     trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
     returnL2Distance
 )
-from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution
+from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution, \
+    calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix
+
 
 def custom_formatter(x):
     return f"{x:.6f}"
@@ -78,6 +82,17 @@ def calculate_class_ratios(labels_list, names_list):
         ratios.append(ratio)
     return ratios
 
+def f1_score(y_true, y_pred):
+    # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
+    y_pred_binary = K.cast(K.greater(y_pred, 0.5), dtype='float32')  # Threshold at 0.5
+    tp = K.sum(K.round(y_true * y_pred_binary))
+    predicted_positives = K.sum(K.round(y_pred_binary))
+    possible_positives = K.sum(K.round(y_true))
+
+    precision = tp / (predicted_positives + K.epsilon())
+    recall = tp / (possible_positives + K.epsilon())
+
+    return 2 * (precision * recall) / (precision + recall + K.epsilon())
 
 ### Global Configuration Dictionary ###
 CONFIG = {
@@ -85,7 +100,7 @@ CONFIG = {
     "batch_size": 128,
     "epochs": 50,
     "loss": "binary_crossentropy",
-    "metrics": ['accuracy', Precision(), Recall()], # metrics = ['mse', 'mae', 'accuracy'],
+    "metrics": ['accuracy', Precision(), Recall(), f1_score], # metrics = ['mse', 'mae', 'accuracy'],
     "enable_scaling": True,
     "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
     "optimizer": SGD,
@@ -250,14 +265,6 @@ def check_indicesEqual(indices_step02, indices_all):
     if not np.array_equal(indices_step02, indices_all):
         print(f"Condition failed: {indices_step02[0]} != {indices_all[0]}")
         sys.exit()  # Terminate the execution
-
-def calculate_f1(y_true, y_pred):
-    # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
-    precision = tf.keras.metrics.Precision()
-    recall = tf.keras.metrics.Recall()
-    precision.update_state(y_true, y_pred)
-    recall.update_state(y_true, y_pred)
-    return 2 * (precision.result() * recall.result()) / (precision.result() + recall.result() + tf.keras.backend.epsilon())
 
 def model03_VangRNN(data, labels, needSplitting, config):
     # Extract hyperparameters
@@ -467,9 +474,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     #    plt.show()
 
     print(" ----- NOT NORMALIZED -----")
-    tryThisTomorrow(X_train, X_val, X_test)
+  #  tryThisTomorrow(X_train, X_val, X_test)
     print(" ----- NORMALIZED ----- ")
-    tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
+  #  tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
  #   sys.exit()
    # return
 
@@ -540,6 +547,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     # Apply default threshold (0.5) if not tuning
     preds_binary = (predictions.flatten() >= 0.5).astype(int)
 
+    cm_raw, cm_norm = calculateAndReturnConfusionMatrix(Y_test, preds_binary)
+    print(cm_raw); print(cm_norm)
+
     np.set_printoptions(formatter={'float': custom_formatter}, linewidth=np.inf)
     print(f'Predictions shape = {predictions.shape}'); print(f'Y_test_normalized shape = {Y_test.shape}')
 
@@ -577,8 +587,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
     saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
-                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All)
+                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
+    plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)
 
 
 split_options = CONFIG['split_options'] # Define as a variable

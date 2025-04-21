@@ -9,6 +9,8 @@ from sklearn.manifold import TSNE
 from scipy.signal import spectrogram
 from collections import Counter
 
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
 from utils00 import returnFileNameToSave
 
 # ----- 01 -----
@@ -52,51 +54,53 @@ def plot_token_distribution_Histogram(data, name="Token", bins=30, title=None, s
 
 # ----- 01 -----
 def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "C", "D"),
-                               title="Duration Distributions by Label", bins=50):
+                               title="Distribution by Label", bins=50):
     """
-    Plots duration histograms with KDE overlays per label from a metadata DataFrame.
+    Plots histograms of a given column, grouped by label, with auto-detected units.
 
     Parameters:
-    - df_metadata: DataFrame with at least ["duration", "label"] columns
+    - df_metadata: DataFrame with at least [colName, "label"] columns
     - labels: Tuple or list of labels to plot (default: ["ALL", "C", "D"])
     - title: Plot title
     - bins: Number of histogram bins
     """
+
+    # Auto unit detection based on column name
+    unit = "s" if "duration" in colName.lower() else "Hz" if any(k in colName.lower() for k in ["freq", "rate"]) else ""
+
     fig, axs = plt.subplots(len(labels), 1, figsize=(8, 5 * len(labels)), gridspec_kw={'hspace': 0.1},
                             constrained_layout=True)
 
     labelStats_Dict = {}
+
     for i, label in enumerate(labels):
-        if label == "ALL":
-            subset = df_metadata
-        else:
-            subset = df_metadata[df_metadata["label"] == label]
+        subset = df_metadata if label == "ALL" else df_metadata[df_metadata["label"] == label]
 
         if not subset.empty:
             print(f"\nLabel: {label}")
-            colName_Values = subset[colName]
-
-            colName_mean = colName_Values.mean()
-            colName_std = colName_Values.std()
-            colName_count = colName_Values.count()
-            colName_min = colName_Values.min()
-            colName_max = colName_Values.max()
+            col_values = subset[colName]
 
             stats = {
-                "count": colName_count,
-                "mean": colName_mean,
-                "std": colName_std,
-                "min": colName_min,
-                "max": colName_max
+                "count": col_values.count(),
+                "mean": col_values.mean(),
+                "std": col_values.std(),
+                "min": col_values.min(),
+                "max": col_values.max()
             }
             labelStats_Dict[label] = stats
 
+            # Nicely formatted stats output
             print(
-                f"{colName} Count: {colName_count}, Mean: {colName_mean:.2f}s, Std: {colName_std:.2f}s, Min: {colName_min:.2f}s, Max: {colName_max:.2f}s")
+                f"{colName} Count: {stats['count']}, "
+                f"Mean: {stats['mean']:.2f}{unit}, "
+                f"Std: {stats['std']:.2f}{unit}, "
+                f"Min: {stats['min']:.2f}{unit}, "
+                f"Max: {stats['max']:.2f}{unit}"
+            )
 
             plot_token_distribution_Histogram(
-                data=colName_Values,
-                name=f"{colName} (s)",
+                data=col_values,
+                name=f"{colName} ({unit})" if unit else colName,
                 bins=bins,
                 title=f"{label} Labels",
                 stats=stats,
@@ -252,9 +256,19 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
     validation_accuracy = history.history['val_accuracy']
     training_loss = history.history['loss']
     validation_loss = history.history['val_loss']
-
     # Get the number of epochs from the length of the accuracy history
     epochs = len(training_accuracy)
+
+    # === Create separate figure for Loss ===
+    fig_loss, ax_loss = plt.subplots(figsize=(8, 4))
+    ax_loss.plot(range(1, epochs + 1), training_loss, label='Training Loss', color='blue', marker='o')
+    ax_loss.plot(range(1, epochs + 1), validation_loss, label='Validation Loss', color='orange', marker='o')
+    ax_loss.set_title('Loss vs Epoch')
+    ax_loss.set_xlabel('Epochs')
+    ax_loss.set_ylabel('Loss')
+    ax_loss.legend()
+    ax_loss.grid(True)
+    fig_loss.tight_layout()
 
     # Create a 2x2 grid for subplots
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -268,22 +282,12 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
     axes[0, 0].legend()
     axes[0, 0].grid(True)
 
-    # Plot training and validation loss
-    axes[0, 1].plot(range(1, epochs + 1), training_loss, label='Training Loss', color='blue', marker='o')
-    axes[0, 1].plot(range(1, epochs + 1), validation_loss, label='Validation Loss', color='orange', marker='o')
-    axes[0, 1].set_title('Loss vs Epoch')
-    axes[0, 1].set_xlabel('Epochs')
-    axes[0, 1].set_ylabel('Loss')
-    axes[0, 1].legend()
-    axes[0, 1].grid(True)
-
     # Get all available metric names
     metric_keys = list(history.history.keys())
 
     # Find keys dynamically (handles variations like precision_1, precision_2, etc.)
     precision_key = next((k for k in metric_keys if 'precision' in k.lower()), None)
     recall_key = next((k for k in metric_keys if 'recall' in k.lower()), None)
-
 
     if flagRegression == "NO":
         # Extract metrics dynamically
@@ -297,21 +301,32 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
             validation_precision = history.history['val_precision']
             training_recall = history.history['recall']
             validation_recall = history.history['val_recall']
+        # F1 score
+        training_f1 = history.history.get('f1_score', [])
+        validation_f1 = history.history.get('val_f1_score', [])
 
-        axes[1, 0].plot(range(1, epochs + 1), training_precision, label='Training Precision', color='blue', marker='o')
-        axes[1, 0].plot(range(1, epochs + 1), validation_precision, label='Validation Precision', color='orange', marker='o')
-        axes[1, 0].set_title('Precision vs Epoch')
+
+        axes[0, 1].plot(range(1, epochs + 1), training_precision, label='Training Precision', color='blue', marker='o')
+        axes[0, 1].plot(range(1, epochs + 1), validation_precision, label='Validation Precision', color='orange', marker='o')
+        axes[0, 1].set_title('Precision vs Epoch')
+        axes[0, 1].set_xlabel('Epochs')
+        axes[0, 1].set_ylabel('Precision')
+        axes[0, 1].legend()
+        axes[0, 1].grid(True)
+
+        axes[1, 0].plot(range(1, epochs + 1), training_recall, label='Training Recall', color='blue', marker='o')
+        axes[1, 0].plot(range(1, epochs + 1), validation_recall, label='Validation Recall', color='orange', marker='o')
+        axes[1, 0].set_title('Recall vs Epoch')
         axes[1, 0].set_xlabel('Epochs')
-        axes[1, 0].set_ylabel('Precision')
+        axes[1, 0].set_ylabel('Recall')
         axes[1, 0].legend()
         axes[1, 0].grid(True)
 
-        # Plot training and validation MSE
-        axes[1, 1].plot(range(1, epochs + 1), training_recall, label='Training Recall', color='blue', marker='o')
-        axes[1, 1].plot(range(1, epochs + 1), validation_recall, label='Validation Recall', color='orange', marker='o')
-        axes[1, 1].set_title('Recall vs Epoch')
+        axes[1, 1].plot(range(1, epochs + 1), training_f1, label='Training F1 Score', color='blue', marker='o')
+        axes[1, 1].plot(range(1, epochs + 1), validation_f1, label='Validation F1 Score', color='orange', marker='o')
+        axes[1, 1].set_title('F1 Score vs Epoch')
         axes[1, 1].set_xlabel('Epochs')
-        axes[1, 1].set_ylabel('Recall')
+        axes[1, 1].set_ylabel('F1 Score')
         axes[1, 1].legend()
         axes[1, 1].grid(True)
     else:
@@ -340,12 +355,50 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
     # Adjust layout to prevent overlap
     plt.tight_layout()
 
-    filenameFull = returnFileNameToSave(filepath_data, figureNameParams)
+    # Save both figures
+    filenameFull_main = returnFileNameToSave(filepath_data, figureNameParams)
+    filenameFull_loss = filenameFull_main.replace("figure_", "Lossfig")
 
-    plt.savefig(filenameFull)  # Save the plot using the dynamic filename
-    print(filenameFull)
+    fig.savefig(filenameFull_main)
+    fig_loss.savefig(filenameFull_loss)
 
- #   plt.show()
+    print("Saved metrics plot to:", filenameFull_main)
+    print("Saved loss plot to:", filenameFull_loss)
+
+  #  plt.show()
+
+# ----- 03 -----
+def calculateAndReturnConfusionMatrix(Y, Y_preds):
+    cm_raw = confusion_matrix(Y, Y_preds)
+    cm_norm = confusion_matrix(Y, Y_preds, normalize='true')
+    return cm_raw, cm_norm
+
+# ----- 03 -----
+def plotAndSaveConfusionMatrix(cm_raw, cm_norm, filepath_data, figureNameParams):
+    labels = ["Control", "Dementia"]
+
+    disp_raw = ConfusionMatrixDisplay(confusion_matrix=cm_raw, display_labels=labels)
+    disp_norm = ConfusionMatrixDisplay(confusion_matrix=cm_norm, display_labels=labels)
+
+    # Plot side-by-side
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    disp_raw.plot(ax=ax1, cmap='Blues', values_format='d')
+    ax1.set_title("Confusion Matrix (Raw Counts)")
+
+    disp_norm.plot(ax=ax2, cmap='Blues', values_format='.2f')
+    ax2.set_title("Confusion Matrix (Normalized)")
+
+    plt.tight_layout()
+   # plt.show()
+    filename_cm = returnFileNameToSave(filepath_data, figureNameParams)
+    filename_cm = filename_cm.replace("figure_", "ConfMatrix_")
+
+    fig.savefig(filename_cm)
+    print(f"Saved combined confusion matrix to: {filename_cm}")
+
+
+    return
 
 # ----- 03 -----
 def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
@@ -359,3 +412,4 @@ def plot_bootstrap_distribution(bootstrap_accuracies, lower_bound, upper_bound):
     plt.xlabel('Accuracy')
     plt.ylabel('Frequency')
     plt.show()
+

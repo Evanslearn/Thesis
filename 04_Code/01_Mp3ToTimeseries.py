@@ -11,7 +11,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, \
-    extract_duration_and_samplerate
+    extract_duration_and_samplerate, analyze_audio
 from utils_Plots import plot_token_distribution_Histogram, plot_colName_distributions
 
 
@@ -154,7 +154,7 @@ def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
             print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
         raise e
 
-def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=512, threshold=0.02):
+def extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=512, threshold=0.02, resample=False, target_length=40):
     # Step 1: Compute RMS and MFCC
     rms = librosa.feature.rms(y=audio, hop_length=hop_length).flatten()
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length)
@@ -167,15 +167,18 @@ def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=5
     # Step 3: Filter MFCC frames
     mfcc_filtered = mfcc[:, valid_frames]
 
-    # Resample each MFCC to target length
-    mfcc_resampled = np.array([
-        np.interp(np.linspace(0, 1, target_length),
-                  np.linspace(0, 1, mfcc_filtered.shape[1]),
-                  mfcc_filtered[i]) for i in range(n_mfcc)
-    ])
+    mfcc_final = mfcc_filtered
+    if resample != False:
+        # Resample each MFCC to target length
+        mfcc_resampled = np.array([
+            np.interp(np.linspace(0, 1, target_length),
+                      np.linspace(0, 1, mfcc_filtered.shape[1]),
+                      mfcc_filtered[i]) for i in range(n_mfcc)
+        ])
+        mfcc_final = mfcc_resampled
 
     # Flatten to 1D feature vector
-    return mfcc_resampled.flatten()
+    return mfcc_final.flatten()
 
 def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
     labels = []
@@ -217,8 +220,8 @@ def logicForPitt():
     metadata_ALL = extract_duration_and_samplerate(labeled_files)
     df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "sample_rate", "label"])
   #  df_metadata.to_csv("duration_report.csv", index=False)
-    stats_duration = plot_colName_distributions(df_metadata, "duration")
-    stats_sampleRate = plot_colName_distributions(df_metadata, "sample_rate")
+    stats_duration = plot_colName_distributions(df_metadata, colName="duration", title="Duration Distributions by Label")
+    stats_sampleRate = plot_colName_distributions(df_metadata, colName="sample_rate", title="Sample Rate Distributions by Label")
 
     sample_rate, frame_length, hop_length, threshold = (
         config["sample_rate"],
@@ -245,13 +248,17 @@ def logicForPitt():
    #         files_without_speech.append(mp3_file)  # Log the file if no speech is detected
         try:
             audio, sr = loadMp3AndConvertToTimeseries(mp3_file, sample_rate=sample_rate)
+
+            # Analyze frequency and duration at higher precision (optional: use a higher target_sr)
+            full_sr, duration, max_freq = analyze_audio(mp3_file, target_sr=44100)
+
             feature_type = config["feature_type"]
             resample = config["resampleTimeseries"]
 
             if feature_type == "raw":
                 features = audio  # raw waveform
             elif feature_type == "mfcc":
-                features = extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=hop_length, threshold=threshold)
+                features = extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=hop_length, threshold=threshold, resample=resample, target_length=40)
             elif feature_type == "audio_features":
                 features = extract_audio_features(audio, sr, hop_length=hop_length, verbose=False)
             else:
@@ -272,9 +279,9 @@ def logicForPitt():
             if config.get("verbose"):
                 duration_sec = len(audio) / sr
                 shape = output_timeseries.shape
-                metadata_ALL.append((os.path.basename(mp3_file), sr, duration_sec, shape, label))
-                print(f"✅ {os.path.basename(mp3_file)} | SampleRate: {sr:.2f} | Duration: {duration_sec:.2f}s | "
-                      f"Feature shape: {output_timeseries.shape} | Label: {label}")
+                metadata_ALL.append((os.path.basename(mp3_file), sr, full_sr, max_freq, duration_sec, shape, label))
+                print(f"✅ {os.path.basename(mp3_file)} | SR: {sr:.2f} | Original SR: {full_sr} | Max Freq: {max_freq:.2f} Hz | "
+                      f"Duration: {duration_sec:.2f}s | Feature shape: {output_timeseries.shape} | Label: {label}")
 
         except Exception as e:
             print(f"❌ Error processing file {mp3_file}: {e}")
@@ -292,7 +299,7 @@ def logicForPitt():
     # Now, filter labels based on valid_files
     assert len(output_timeseries_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
 
-    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "samplerate", "duration", "shape", "label"])
+    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "SR", "OriginalSR", "max_freq", "duration", "shape", "label"])
     print(df_metadata.head())
 
     # df_metadata built from processed outputs
@@ -321,12 +328,14 @@ def logicForPitt():
     createResultsFile(df_metadata, valid_labels, total_timeseries_time, stats_duration,
                       stats_sampleRate, file_path_caseName, subfolderName, filenameVars)
 
+    stats_maxFreq = plot_colName_distributions(df_metadata, colName="max_freq", title="Max Frequency Distributions by Label")
+
 config = {
-    "sample_rate": 300, #int(600 / 2), # None, int(22050 / 2)
+    "sample_rate": 16000, #int(600 / 2), # None, int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
-    "threshold": 0.02,
-    "feature_type": "raw",  # Options: "raw", "mfcc", "audio_features"
+    "threshold": 0.00,
+    "feature_type": "mfcc",  # Options: "raw", "mfcc", "audio_features"
     "resampleTimeseries": False,
     "verbose": True
 }

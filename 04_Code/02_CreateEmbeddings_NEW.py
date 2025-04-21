@@ -452,7 +452,7 @@ def mainLogic():
     print(f"tokens_train.shape -> {tokens_train.shape}")
 
   #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
-  #  plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], config["random_state"], f"with {n_clusters} Clusters", "no")
+    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], config["random_state"], f"with {n_clusters} Clusters", "no")
 
     window_size = config["window_size"]  # Length of each sequence
     stride = config["stride"]  # Step size to slide the window (1 ensures maximum overlap)
@@ -480,7 +480,6 @@ def mainLogic():
 
     tokens, counts = returnDistribution(tokens_train)
     print('\n Distribution of most common tokens')
- #   plot_token_distribution_Bar(tokens_train)
 
     # Example: Visualize top 5 most common tokens
     print("\nVisualizing plots for most common tokens:")
@@ -497,6 +496,7 @@ def mainLogic():
  #   plot_umap_of_segments(segments_train, tokens_train)
 
     # Train skip-gram model
+    print(f"Vocal size = n_clusters -> {vocab_size} = {n_clusters}")
     start_time = time.time()
     if loss == "NCE":
         skipgram_model, skipgram_history = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)
@@ -565,6 +565,7 @@ def mainLogic():
 
  #   plot_umap_of_segments(train_embeddings, labels_train_seq)
     plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes)
+    plot_token_distribution_Bar(tokens_train)
 
 
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
@@ -580,6 +581,8 @@ filepath_data = "Pitt_output_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18-2
 filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 filepath_data = "Pitt_output_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
 filepath_data = "Pitt_output_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
+filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
+filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
@@ -594,6 +597,8 @@ filepath_labels = "Pitt_labels_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18
 filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 filepath_labels = "Pitt_labels_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
 filepath_labels = "Pitt_labels_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
+filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
+filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {
@@ -602,11 +607,12 @@ config = {
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
     "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
+    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
     "knn_neighbors": 15,        # Number of neighbors for k-NN - 50
-    "window_size": 256,    # 2       # Window size for sequence generation - 10
-    "stride": 128,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 150,       # Dimension of word embeddings - 300
+    "window_size": 2048,    # 2       # Window size for sequence generation - 10
+    "stride": 1024,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 100,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
     "epochs": 10,                # Number of training epochs
     "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper

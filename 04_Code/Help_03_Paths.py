@@ -214,6 +214,7 @@ common_part = "scalerMinMaxScaler()_silhouette0.6798824800472574_nCl150_nN50_win
 common_part = "scalerMinMaxScaler()_silh0.6517_nCl700_nN50_winSize32_stride200_winSizeSG6_SGLossNCE_nEmbeddings48_2025-04-09_01-47-15"
 #common_part = "scalerMinMax_sil0.5099_nCl150_nN15_wSize2_str1024_wSizeSG6_SGLossNCE_nEmbd200_2025-04-20_20-15-11"
 common_part = "scalerMinMax_sil0.6531_nCl100_nN50_wSize128_str128_wSizeSG10_SGLossNCE_nEmbd300_2025-04-21_00-33-13"
+common_part = "scalerStandard_sil0.6895_nCl6_nN15_wSize64_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-21_22-02-16"
 
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names

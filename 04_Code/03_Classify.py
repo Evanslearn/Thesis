@@ -38,12 +38,12 @@ from xgboost import XGBClassifier
 from utils00 import (
     returnFilepathToSubfolder,
     doTrainValTestSplit,
-    plotTrainValMetrics,
-    plot_bootstrap_distribution,
     saveTrainingMetricsToFile,
-    makeLabelsInt, readCsvAsDataframe, plot_tsnePCAUMAP, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type
+    makeLabelsInt, readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
+    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
+    returnL2Distance
 )
+from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution
 
 def custom_formatter(x):
     return f"{x:.6f}"
@@ -114,7 +114,7 @@ CONFIG = {
 
 lr_min = 0.0001 # 0.001, 0.035
 lr_max = 0.1 # 0.01
-lr_distinct = 10 # 10
+lr_distinct = 30 # 10
 learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 
 
@@ -151,7 +151,7 @@ if not CONFIG['split_options']:
 
 
 # When without Signal2Vec
-def whenWithoutSignal2Vec(filepath_data, filepath_labels):
+def loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels):
     fp.FILEPATH_DATA = filepath_data; fp.FILEPATH_LABELS = filepath_labels
  #   data = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_data, "data")
     labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "labels", as_series=True)
@@ -170,7 +170,10 @@ def whenWithoutSignal2Vec(filepath_data, filepath_labels):
 
     labels = makeLabelsInt(labels)
     return data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS
-data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS = whenWithoutSignal2Vec(filepath_data, filepath_labels)
+if CONFIG["split_options"][0] == "YES":
+    data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS = loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels)
+else:
+    data = labels = None  # Not needed when using pre-split
 
 val_ratio = 1
 
@@ -307,24 +310,20 @@ def model03_VangRNN(data, labels, needSplitting, config):
     for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
         save_data_to_csv(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
 
-    # Add callbacks for better control
-    early_stop = EarlyStopping(monitor="val_loss", patience=5, min_delta=0.001, restore_best_weights=True)
-    lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
-
+    L2distance_Train = returnL2Distance(X_train, Y_train)
+    L2distance_Val = returnL2Distance(X_val, Y_val)
+    L2distance_Test = returnL2Distance(X_test, Y_test)
+    L2distance_All = {
+        "L2distance_Train": L2distance_Train,
+        "L2distance_Val": L2distance_Val,
+        "L2distance_Test": L2distance_Test
+    }
 
     def tryThisTomorrow(X_train, X_val, X_test):
 
    #     plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
    #     plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
     #    plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
-
-        mean_0 = X_train[Y_train == 0].mean(axis=0)
-        mean_1 = X_train[Y_train == 1].mean(axis=0)
-
-        dist = np.linalg.norm(mean_0 - mean_1)
-        print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
-
-
 
         # Build a minimal model
         model = tf.keras.Sequential([
@@ -524,6 +523,10 @@ def model03_VangRNN(data, labels, needSplitting, config):
     model.summary()
     print(f"\nLearningRate = {learning_rate:.6f}, Optimizer = {optimizer}")
 
+    # Add callbacks for better control
+    early_stop = EarlyStopping(monitor="val_loss", patience=5, min_delta=0.001, restore_best_weights=True)
+    lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
+
 #    X_train_normalized = X_train; Y_train_normalized = Y_train; X_val_normalized = X_val; Y_val_normalized = Y_val
     history = model.fit(X_train_normalized, Y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val_normalized, Y_val), callbacks=[early_stop, lr_scheduler])
 
@@ -573,7 +576,8 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
-    saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(), fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL)
+    saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
+                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
 
 

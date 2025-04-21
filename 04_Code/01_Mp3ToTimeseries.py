@@ -1,3 +1,4 @@
+import json
 import os
 from os import walk
 from os.path import isfile, join
@@ -9,8 +10,9 @@ import librosa
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, plot_token_distribution, \
-    extract_duration_and_samplerate, plot_colName_distributions
+from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, \
+    extract_duration_and_samplerate
+from utils_Plots import plot_token_distribution_Histogram, plot_colName_distributions
 
 
 def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
@@ -91,6 +93,32 @@ def write_csv(data, file_path_caseName, subfolderName, filenameVars, formatted_d
     if verbose:
         print(f"✅ CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
 
+def createResultsFile(metadata_ALL, labels, total_timeseries_time, durationStats_Dict, samplerateStats_Dict, file_path_caseName,
+                      subfolderName, filenameVars, formatted_datetime=None, prefix="result"):
+    if formatted_datetime is None:
+        formatted_datetime = returnFormattedDateTimeNow()
+
+    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
+    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+
+    # Save everything into a single CSV file
+    with open(filenameFull, "w") as f:
+        f.write(f"labels shape: {len(labels)}")
+        f.write(f"\nTotal timeseries time: {total_timeseries_time:.2f} seconds\n")
+
+        f.write("\nTHE METRICS FOR duration FOLLOW:\n")
+        json.dump(durationStats_Dict, f, indent=4, default=str)
+        f.write("\n\nTHE METRICS FOR samplerate FOLLOW:\n")
+        json.dump(samplerateStats_Dict, f, indent=4, default=str)
+
+        config_serializable = config.copy()
+        f.write("\n\nTHE WHOLE CONFIG FOLLLOWS:\n")
+        json.dump(config_serializable, f, indent=4)
+        f.write("\n\n")
+
+        f.write(metadata_ALL.to_csv(index=False).replace(",", ", "))
+
+
 def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
     if len(audio) < hop_length * 2:
         raise ValueError(f"Audio too short for hop_length={hop_length} (len={len(audio)})")
@@ -126,7 +154,6 @@ def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
             print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
         raise e
 
-
 def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=512, threshold=0.02):
     # Step 1: Compute RMS and MFCC
     rms = librosa.feature.rms(y=audio, hop_length=hop_length).flatten()
@@ -149,7 +176,6 @@ def extract_mfcc_timeseries(audio, sr, n_mfcc=13, target_length=40, hop_length=5
 
     # Flatten to 1D feature vector
     return mfcc_resampled.flatten()
-
 
 def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
     labels = []
@@ -191,9 +217,8 @@ def logicForPitt():
     metadata_ALL = extract_duration_and_samplerate(labeled_files)
     df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "sample_rate", "label"])
   #  df_metadata.to_csv("duration_report.csv", index=False)
-    plot_colName_distributions(df_metadata, "duration")
-    plot_colName_distributions(df_metadata, "sample_rate")
-
+    stats_duration = plot_colName_distributions(df_metadata, "duration")
+    stats_sampleRate = plot_colName_distributions(df_metadata, "sample_rate")
 
     sample_rate, frame_length, hop_length, threshold = (
         config["sample_rate"],
@@ -218,13 +243,6 @@ def logicForPitt():
 
   #      if not speech_detected:
    #         files_without_speech.append(mp3_file)  # Log the file if no speech is detected
-
-        # Preprocess and generate time series
-#        if len(time_series) > 0:
- #           time_series_processed_ALL.append(scale_and_resample_timeseries(time_series))
-#            valid_files.append(mp3_file)
-
-
         try:
             audio, sr = loadMp3AndConvertToTimeseries(mp3_file, sample_rate=sample_rate)
             feature_type = config["feature_type"]
@@ -254,8 +272,9 @@ def logicForPitt():
             if config.get("verbose"):
                 duration_sec = len(audio) / sr
                 shape = output_timeseries.shape
-                metadata_ALL.append((os.path.basename(mp3_file), duration_sec, shape, label))
-                print(f"✅ {os.path.basename(mp3_file)} | Duration: {duration_sec:.2f}s | Feature shape: {output_timeseries.shape} | Label: {label}")
+                metadata_ALL.append((os.path.basename(mp3_file), sr, duration_sec, shape, label))
+                print(f"✅ {os.path.basename(mp3_file)} | SampleRate: {sr:.2f} | Duration: {duration_sec:.2f}s | "
+                      f"Feature shape: {output_timeseries.shape} | Label: {label}")
 
         except Exception as e:
             print(f"❌ Error processing file {mp3_file}: {e}")
@@ -273,11 +292,11 @@ def logicForPitt():
     # Now, filter labels based on valid_files
     assert len(output_timeseries_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
 
-    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "shape", "label"])
+    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "samplerate", "duration", "shape", "label"])
     print(df_metadata.head())
 
     # df_metadata built from processed outputs
-    plot_colName_distributions(df_metadata, title="Processed Duration Distribution")
+#    stats_durationApproximation = plot_colName_distributions(df_metadata, title="Processed Duration Distribution")
 
     filenameVars = f"_{feature_type}_sR{sample_rate}"
 
@@ -292,7 +311,6 @@ def logicForPitt():
         filenameVars += f"_frameL{frame_length}"
 
     filenameVars += "_"
-   # filenameVars = f"_{feature_type}_sR{sample_rate}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_"
  #   printLabelCounts(valid_labels)
     write_csv(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
 
@@ -300,8 +318,11 @@ def logicForPitt():
 
     write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
 
+    createResultsFile(df_metadata, valid_labels, total_timeseries_time, stats_duration,
+                      stats_sampleRate, file_path_caseName, subfolderName, filenameVars)
+
 config = {
-    "sample_rate": 100, #int(600 / 2), # None, int(22050 / 2)
+    "sample_rate": 300, #int(600 / 2), # None, int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.02,

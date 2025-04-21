@@ -61,6 +61,9 @@
 * Some changes/refactorings to the files. Now extracting raw timeseries from part1, so let's see how that goes
 ## 2025/04/06
 * Commited changes/refactoring to all files. Files are now easier to use, and more generic/tunable
+## 2025/04/21
+* Might have found the issue with really bad performance, and it might have been scaling column-wise instead of row-wise, in Signal2Vec logic
+* Commited some changes: Create results file for 01, scale row-wise and plots for clustering quality in 02, broke down utils into two parts (simple and plots)
 
 # TO DO
 * Experiment with sampling of the mp3 files?

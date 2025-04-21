@@ -64,6 +64,8 @@
 ## 2025/04/21
 * Might have found the issue with really bad performance, and it might have been scaling column-wise instead of row-wise, in Signal2Vec logic
 * Commited some changes: Create results file for 01, scale row-wise and plots for clustering quality in 02, broke down utils into two parts (simple and plots)
+## 2025/04/22
+* 01 extract original sr, max freq, 02 plot most frequent tokens, 03 include f1 and confusion matrix
 
 # TO DO
 * Experiment with sampling of the mp3 files?

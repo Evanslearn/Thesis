@@ -250,7 +250,7 @@ def logicForPitt():
             audio, sr = loadMp3AndConvertToTimeseries(mp3_file, sample_rate=sample_rate)
 
             # Analyze frequency and duration at higher precision (optional: use a higher target_sr)
-            full_sr, duration, max_freq = analyze_audio(mp3_file, target_sr=44100)
+            full_sr, duration, max_freq = analyze_audio(mp3_file, target_sr=None)
 
             feature_type = config["feature_type"]
             resample = config["resampleTimeseries"]
@@ -329,6 +329,7 @@ def logicForPitt():
                       stats_sampleRate, file_path_caseName, subfolderName, filenameVars)
 
     stats_maxFreq = plot_colName_distributions(df_metadata, colName="max_freq", title="Max Frequency Distributions by Label")
+    returnDistribution(df_metadata['OriginalSR'], "Original SR")
 
 config = {
     "sample_rate": 16000, #int(600 / 2), # None, int(22050 / 2)

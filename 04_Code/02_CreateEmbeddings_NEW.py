@@ -451,9 +451,6 @@ def mainLogic():
     print(tokens_train)
     print(f"tokens_train.shape -> {tokens_train.shape}")
 
-  #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
-    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], config["random_state"], f"with {n_clusters} Clusters", "no")
-
     window_size = config["window_size"]  # Length of each sequence
     stride = config["stride"]  # Step size to slide the window (1 ensures maximum overlap)
 
@@ -566,6 +563,8 @@ def mainLogic():
  #   plot_umap_of_segments(train_embeddings, labels_train_seq)
     plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes)
     plot_token_distribution_Bar(tokens_train)
+    #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
+    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], config["random_state"], f"with {n_clusters} Clusters", "no")
 
 
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
@@ -607,11 +606,11 @@ config = {
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
     "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
-    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192],
+    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
-    "knn_neighbors": 15,        # Number of neighbors for k-NN - 50
-    "window_size": 2048,    # 2       # Window size for sequence generation - 10
-    "stride": 1024,          # 8      # Stride for sequence generation - 1
+    "knn_neighbors": 5,        # Number of neighbors for k-NN - 50
+    "window_size": 4096,    # 2       # Window size for sequence generation - 10
+    "stride": 2048,          # 8      # Stride for sequence generation - 1
     "embedding_dim": 100,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
     "epochs": 10,                # Number of training epochs

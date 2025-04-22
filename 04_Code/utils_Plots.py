@@ -246,7 +246,7 @@ def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, random_state, title, r
     sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
     plt.title(f"{algorithm.__name__} Visualization " + title)
     plt.xlabel(f"{algorithm.__name__} Component 1"); plt.ylabel(f"{algorithm.__name__} Component 2")
-  #  plt.show()
+    plt.show()
     print(f" ----- Finished algorithm - {algorithm} -----")
 
 # ----- 03 -----

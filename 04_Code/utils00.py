@@ -273,9 +273,11 @@ def analyze_audio(file_path, target_sr=44100):
 
     # Threshold to ignore noise (e.g., 1% of max)
     threshold = 0.01 * np.max(fft)
+    threshold = 0.00
     max_freq = freqs[fft > threshold].max() if any(fft > threshold) else 0
 
     return sr, duration, max_freq
+
 def extract_duration_and_samplerate(labeled_files, verbose=True):
     """
     Returns a list of tuples: (filename, duration_sec, sample_rate, label)

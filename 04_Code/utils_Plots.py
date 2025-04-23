@@ -273,6 +273,40 @@ def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title, random_state=42
     print(f" ----- Finished algorithm - {algorithm} -----")
 
 # ----- 03 -----
+def plotClassBarPlots(Y_train, Y_val, Y_test):
+    label_sets = [Y_train, Y_val, Y_test]
+    titles = ['Train', 'Validation', 'Test']
+
+    # A4 width ~11.7 inches, height adjusted for clarity
+    fig, axes = plt.subplots(1, 3, figsize=(11.7, 4), sharey=True)
+    for i, (ax, labels, title) in enumerate(zip(axes, label_sets, titles)):
+        unique, counts = np.unique(labels, return_counts=True)
+        total = counts.sum()
+        ratios = counts / total
+
+        bars = ax.bar(['Class 0', 'Class 1'], counts, color=['#1f77b4', '#ff7f0e'])
+        ax.set_title(f'{title} Class Distribution', fontsize=12)
+        ax.set_xlabel('Class', fontsize=10)
+        if i == 0:
+            ax.set_ylabel('Count', fontsize=10)
+
+        # Annotate with count and ratio above bars
+        for j, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height / 2,  # vertical center
+                f'{counts[j]}\n({ratios[j] * 100:.1f}%)',
+                ha='center',
+                va='center',
+                fontsize=12,
+                color='white' if height > 40 else 'black',  # readable contrast
+                fontweight='bold'
+            )
+    plt.tight_layout()
+    plt.show()
+
+# ----- 03 -----
 def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression = "NO"):
     # Access metrics from the history
     training_accuracy = history.history['accuracy']

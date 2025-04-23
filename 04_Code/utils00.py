@@ -322,8 +322,21 @@ def saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clu
 
     return
 
+def save_data_to_csv03(data, labels, subfolderName, suffix, data_type):
+    # Helper function to save both data and labels to CSV
+    data_df = pd.DataFrame(data)
+    labels_df = pd.DataFrame(labels)
 
-def saveTrainingMetricsToFile(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
+    data_filename = f"Data_{data_type}_{suffix}.csv"
+    labels_filename = f"Labels_{data_type}_{suffix}.csv"
+
+    data_filepath = returnFilepathToSubfolder(data_filename, subfolderName)
+    labels_filepath = returnFilepathToSubfolder(labels_filename, subfolderName)
+
+    data_df.to_csv(data_filepath, index=False, header=False)
+    labels_df.to_csv(labels_filepath, index=False, header=False)
+
+def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
                               filepath_data, fileNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 

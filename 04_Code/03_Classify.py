@@ -2,7 +2,6 @@ import sys
 import os
 import time
 import random
-from datetime import datetime
 
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.decomposition import PCA
@@ -40,13 +39,12 @@ from xgboost import XGBClassifier
 from utils00 import (
     returnFilepathToSubfolder,
     doTrainValTestSplit,
-    saveTrainingMetricsToFile,
     makeLabelsInt, readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
     trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
-    returnL2Distance, print_data_info
+    returnL2Distance, print_data_info, save_data_to_csv03, saveTrainingMetricsToFile03, printLabelCounts
 )
 from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution, \
-    calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix
+    calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix, plotClassBarPlots
 
 
 def custom_formatter(x):
@@ -57,20 +55,6 @@ def print_shapes(name, original, normalized):
     print(f'{name} shape is = {original.shape}')
     print(f'{name} normalized shape is = {normalized.shape}')
 
-def save_data_to_csv(data, labels, subfolderName, suffix, data_type):
-    # Helper function to save both data and labels to CSV
-    data_df = pd.DataFrame(data)
-    labels_df = pd.DataFrame(labels)
-
-    data_filename = f"Data_{data_type}_{suffix}.csv"
-    labels_filename = f"Labels_{data_type}_{suffix}.csv"
-
-    data_filepath = returnFilepathToSubfolder(data_filename, subfolderName)
-    labels_filepath = returnFilepathToSubfolder(labels_filename, subfolderName)
-
-    data_df.to_csv(data_filepath, index=False, header=False)
-    labels_df.to_csv(labels_filepath, index=False, header=False)
-
 def calculate_class_ratios(labels_list, names_list):
     """Calculate and print the ratio of 0s to 1s for each dataset."""
     ratios = []
@@ -78,7 +62,11 @@ def calculate_class_ratios(labels_list, names_list):
         count_0 = np.sum(labels == 0)
         count_1 = np.sum(labels == 1)
         ratio = count_0 / count_1
-        print(f"{name}, Y_0/Y_1 = {ratio}")
+        ratio0All = count_0 / (count_0 + count_1)
+        ratio1All = count_1 / (count_0 + count_1)
+        print(f"{name}, Y_0/Y_1 = {ratio:.4f}")
+        print(f"{name}, Y_0/All = {100*ratio0All:.2f}%")
+        print(f"{name}, Y_1/All = {100*ratio1All:.2f}%")
         ratios.append(ratio)
     return ratios
 
@@ -267,12 +255,75 @@ def check_indicesEqual(indices_step02, indices_all):
         print(f"Condition failed: {indices_step02[0]} != {indices_all[0]}")
         sys.exit()  # Terminate the execution
 
+
+def evaluate_model(name, clf, X_val, Y_val, X_test, Y_test):
+    print(f"\n🔍 Training: {name}")
+
+    def get_predictions_and_metrics(X, Y, set_name):
+        predictions = clf.predict(X)
+        report_dict = classification_report(Y, predictions, output_dict=True)
+        report_df = pd.DataFrame(report_dict).transpose()
+        report_df["set"] = set_name
+
+        acc = report_dict["accuracy"] if "accuracy" in report_dict else report_dict.get("weighted avg", {}).get("f1-score")
+        cm = confusion_matrix(Y, predictions)
+
+        print(f"\n📊 {set_name.title()} Performance for {name}:")
+        print(classification_report(Y, predictions))
+        print(f"{set_name.title()} Accuracy: {acc:.4f}")
+        print("Confusion Matrix:")
+        print(cm)
+
+        return report_df
+
+    val_df = get_predictions_and_metrics(X_val, Y_val, "validation")
+    test_df = get_predictions_and_metrics(X_test, Y_test, "test")
+
+    combined_df = pd.concat([val_df, test_df], axis=0)
+    combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
+
+    print(f"\n📋 Combined classification report for {name}:")
+    print(combined_df.round(2))
+
+    def get_class_probabilities(clf, X):
+        """Returns predicted probabilities or approximations for binary classifiers."""
+        if hasattr(clf, "predict_proba"):
+            return clf.predict_proba(X)[:, 1]
+        elif hasattr(clf, "decision_function"):
+            scores = clf.decision_function(X)
+            return sigmoid(scores)
+        else:
+            # fallback: treat predictions as binary probs
+            return clf.predict(X).astype(float)
+
+    y_proba_test = get_class_probabilities(clf, X_test)
+
+    print(f"🧪 Probabilities for {name}:")
+    print(f"Shape: {y_proba_test.shape}")
+    print(f"Sample: {y_proba_test[:10]}")
+
+    return combined_df
+
+def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state):
+    models = {
+        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=random_state),
+        "SVM (RBF Kernel)": SVC(kernel='rbf', probability=True, random_state=random_state),
+        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=random_state),
+        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=random_state)
+    }
+
+    for name, clf in models.items():
+        print(f"\n===== {name} =====")
+        clf.fit(X_train, Y_train)
+        evaluate_model(name, clf, X_val, Y_val, X_test, Y_test)
+
 def model03_VangRNN(data, labels, needSplitting, config):
     # Extract hyperparameters
     batch_size, epochs = config["batch_size"], config["epochs"]
     loss, metrics = config["loss"], config["metrics"]
     learning_rate, optimizer_class  = config["learning_rate"], config["optimizer"]
     momentum = config["momentum"]
+    random_state = config["random_state"]
 
     # Extract RNN layers
     layers = config["layers"]
@@ -314,178 +365,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
     subfolderName = "03_ClassificationResults"
     suffix = f"Splitting_{needSplitting}"
 
-    from sklearn.metrics import classification_report, confusion_matrix
-    import pandas as pd
-    import numpy as np
-
-    def evaluate_model(name, clf, X_val, Y_val, X_test, Y_test):
-        print(f"\n🔍 Training: {name}")
-        clf.fit(X_val, Y_val)  # You can swap this with training on training data
-
-        def get_predictions_and_metrics(X, Y, set_name):
-            preds = clf.predict(X)
-            report_dict = classification_report(Y, preds, output_dict=True)
-            report_df = pd.DataFrame(report_dict).transpose()
-            report_df["set"] = set_name
-
-            acc = report_dict["accuracy"] if "accuracy" in report_dict else report_dict.get("weighted avg", {}).get(
-                "f1-score")
-            cm = confusion_matrix(Y, preds)
-
-            print(f"\n📊 {set_name.title()} Performance for {name}:")
-            print(classification_report(Y, preds))
-            print(f"{set_name.title()} Accuracy: {acc:.4f}")
-            print("Confusion Matrix:")
-            print(cm)
-
-            return report_df
-
-        val_df = get_predictions_and_metrics(X_val, Y_val, "validation")
-        test_df = get_predictions_and_metrics(X_test, Y_test, "test")
-
-        combined_df = pd.concat([val_df, test_df], axis=0)
-        combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
-
-        print(f"\n📋 Combined classification report for {name}:")
-        print(combined_df.round(2))
-
-        return combined_df
-
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.svm import SVC
-    from sklearn.ensemble import RandomForestClassifier
-    from xgboost import XGBClassifier
-
-    def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test):
-        models = {
-            "Logistic Regression": LogisticRegression(max_iter=1000),
-            "SVM (RBF Kernel)": SVC(kernel='rbf', probability=True),
-            "Random Forest": RandomForestClassifier(n_estimators=100),
-            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
-        }
-
-        for name, clf in models.items():
-            print(f"\n===== {name} =====")
-            clf.fit(X_train, Y_train)
-            evaluate_model(name, clf, X_val, Y_val, X_test, Y_test)
-
     # Save training, validation, and test data using the helper function
     for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
-        save_data_to_csv(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
-
-    def classifyWithSimpleModels(X_train, X_val, X_test):
-
-   #     plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
-   #     plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
-    #    plot_tsnePCAUMAP(umap.UMAP, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
-
-        # Build a minimal model
-        model = tf.keras.Sequential([
-            tf.keras.layers.Input(shape=(X_train.shape[1],)),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01)),
-            tf.keras.layers.Dropout(0.4),
-            tf.keras.layers.Dense(1, activation='sigmoid')
-        ])
-        model.summary()
-
-        # Compile with a lower learning rate
-        if optimizer_class == SGD:
-            optimizer = optimizer_class(learning_rate=learning_rate, momentum=momentum)
-        else:
-            optimizer = optimizer_class(learning_rate=learning_rate)
-        model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
-      #  model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
-
-        # Add callbacks for better control
-        early_stop = EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True)
-        lr_scheduler = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6)
-
-        # Train
-   #     history = model.fit(
-   #         X_train, Y_train,
-   #         validation_data=(X_val, Y_val),
-  #          epochs=60, batch_size=128,
-   #         callbacks=[early_stop, lr_scheduler]
-   #     )
-
-   #     predictions = model.predict(X_test)
-    #    loss_evaluate = model.evaluate(X_test, Y_test)
-    #    print(loss_evaluate)
-
-
-        # Dictionary of models
-        models = {
-            "Logistic Regression": LogisticRegression(max_iter=1000, random_state=random_state),
-            "SVM (RBF Kernel)": SVC(kernel='rbf', random_state),
-            "Random Forest": RandomForestClassifier(n_estimators=100, random_state),
-            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state)
-            # use_label_encoder=False suppresses warning
-        }
-
-        for name, clf in models.items():
-            print(f"\n🔍 Training: {name}")
-            clf.fit(X_train, Y_train)
-
-            # ---- Validation evaluation ----
-            val_preds = clf.predict(X_val)
-            print(f"\n📊 Validation Performance for {name}:")
-            print(classification_report(Y_val, val_preds))
-            val_acc = accuracy_score(Y_val, val_preds)
-            print(f"Validation Accuracy: {val_acc:.4f}")
-            print("Validation Confusion Matrix:")
-            print(confusion_matrix(Y_val, val_preds))
-
-            # ---- Test evaluation ----
-            test_preds = clf.predict(X_test)
-            print(f"\n📊 Test Performance for {name}:")
-            print(classification_report(Y_test, test_preds))
-            test_acc = accuracy_score(Y_test, test_preds)
-            print(f"Test Accuracy: {test_acc:.4f}")
-            print("Test Confusion Matrix:")
-            print(confusion_matrix(Y_test, test_preds))
-
-            # Predict both sets
-            val_preds = clf.predict(X_val)
-            test_preds = clf.predict(X_test)
-
-            # Get reports as dicts
-            val_report = classification_report(Y_val, val_preds, output_dict=True)
-            test_report = classification_report(Y_test, test_preds, output_dict=True)
-
-            # Convert to DataFrames
-            val_df = pd.DataFrame(val_report).transpose()
-            test_df = pd.DataFrame(test_report).transpose()
-
-            # Add a column to indicate the split
-            val_df["set"] = "validation"
-            test_df["set"] = "test"
-
-            # Combine them
-            combined_df = pd.concat([val_df, test_df], axis=0)
-
-            # Optional: reorder for clarity
-            combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
-
-            print(f"\n📋 Combined classification report for {name}:")
-            print(combined_df.round(2))
-
-            np.set_printoptions(formatter={'float': custom_formatter}, linewidth=np.inf)
-            print(f'Predictions shape = {test_preds.shape}');
-            print(f'Y_test_normalized shape = {Y_test.shape}')
-
-            if hasattr(clf, "predict_proba"):
-                y_proba_test = clf.predict_proba(X_test)[:, 1]  # probability of class 1
-            elif hasattr(clf, "decision_function"):  # e.g., SVM
-                y_scores = clf.decision_function(X_test)
-                y_proba_test = sigmoid(y_scores)  # You can define a sigmoid if you want probs
-            else:
-                y_proba_test = clf.predict(X_test)  # fallback, hard labels
-            if isinstance(y_proba_test, tf.Tensor):
-                y_proba_test = y_proba_test.numpy()
-            print(f'pred probab = {y_proba_test.T}')
-            print(f'predictions = {test_preds.T}')
-            print(f'real labels = {Y_test}')
+        save_data_to_csv03(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
 
     # Normalize the data
     scaler = config["scaler"]
@@ -514,9 +396,15 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
 
-    for labelSet in [Y_train, Y_val, Y_test]:
-        plt.plot(labelSet)
-    #    plt.show()
+    plotClassBarPlots(Y_train, Y_val, Y_test)
+    def shuffleLabelsRandomly(Y_train, Y_val, Y_test):
+        np.random.seed(42)
+        Y_train = np.random.permutation(Y_train)
+        Y_val = np.random.permutation(Y_val)
+        Y_test = np.random.permutation(Y_test)
+        return Y_train, Y_val, Y_test
+  #  Y_train, Y_val, Y_test = shuffleLabelsRandomly(Y_train, Y_val, Y_test)
+
 
     print(" ----- CLASSICAL MODELS -----")
     print(" ----- NOT NORMALIZED -----")
@@ -529,8 +417,9 @@ def model03_VangRNN(data, labels, needSplitting, config):
         "L2distance_Test": L2distance_Test
     }
     print(L2distance_All)
-    train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test)
+    train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state)
   #  classifyWithSimpleModels(X_train, X_val, X_test)
+
     print(" ----- NORMALIZED ----- ")
     L2distance_Train = returnL2Distance(X_train_normalized, Y_train)
     L2distance_Val = returnL2Distance(X_val_normalized, Y_val)
@@ -541,10 +430,21 @@ def model03_VangRNN(data, labels, needSplitting, config):
         "L2distance_Test": L2distance_Test
     }
     print(L2distance_All)
-    train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test)
+    train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state)
   #  classifyWithSimpleModels(X_train_normalized, X_val_normalized, X_test_normalized)
  #   sys.exit()
    # return
+
+    methods = [PCA, TSNE, umap.UMAP]
+    labels = ["PCA", "t-SNE", "UMAP"]
+    datasets = [
+        (X_train, "on Raw Signal2Vec Embeddings"),
+        (X_train_normalized, "on Normalized Signal2Vec Embeddings")
+    ]
+    for method, label in zip(methods, labels):
+        for X_data, suffix in datasets:
+            print(f"\n🖼️ Plotting {label} {suffix}")
+            plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
     # Only expand dims for RNNs
@@ -651,7 +551,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
-    saveTrainingMetricsToFile(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
+    saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
                               fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
     plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)

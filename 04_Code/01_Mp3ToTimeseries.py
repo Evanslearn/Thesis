@@ -1,19 +1,13 @@
-import json
 import os
-from os import walk
-from os.path import isfile, join
-from collections import Counter
-import csv
+from os.path import join
 import pandas as pd
 import time
 import librosa
 import numpy as np
-from matplotlib import pyplot as plt
+import soundfile as sf
 
-from utils00 import returnFilepathToSubfolder, returnFormattedDateTimeNow, returnDistribution, \
-    extract_duration_and_samplerate, analyze_audio
-from utils_Plots import plot_token_distribution_Histogram, plot_colName_distributions
-
+from utils00 import returnFormattedDateTimeNow, returnDistribution, printLabelCounts, write_csv01, createResultsFile01
+from utils_Plots import plot_colName_distributions
 
 def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
     # Load MP3 with file_path
@@ -27,33 +21,57 @@ def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
 
     return data, sr
 
-def extract_speaker_segments(audio, frame_length=2048, hop_length=512, threshold = 0.02):
+def analyze_audio(file_path, target_sr=44100):
+    # Load audio (converts to mono by default)
+    y, sr = librosa.load(file_path, sr=target_sr)
+
+    # Duration in seconds
+    duration = librosa.get_duration(y=y, sr=sr)
+
+    # Perform FFT to get frequency components
+    fft = np.abs(np.fft.rfft(y))
+    freqs = np.fft.rfftfreq(len(y), 1 / sr)
+
+    # Threshold to ignore noise (e.g., 1% of max)
+    threshold = 0.01 * np.max(fft)
+    threshold = 0.00
+    max_freq = freqs[fft > threshold].max() if any(fft > threshold) else 0
+
+    return sr, duration, max_freq
+
+def extract_duration_and_samplerate(labeled_files, verbose=True):
     """
-    Detects speaker activity (speech activity).
+    Returns a list of tuples: (filename, duration_sec, sample_rate, label)
+    Safely extracts duration and sampling rate without loading full audio.
     """
-    # Use RMS energy to detect speech regions
-    rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length).flatten()
+    metadata = []
 
-    # Filter based on some threshold for speech
-    speech_segments = rms > threshold  # Boolean array for active speech regions
-    speech_detected = np.any(speech_segments)  # Check if any segment has speech
+    for idx, (mp3_file, label) in enumerate(labeled_files):
+        if verbose and idx % 20 == 0:
+            print(f"🔍 Checking file #{idx}: {mp3_file}")
 
-    return speech_segments, rms, speech_detected
+        try:
+            info = sf.info(mp3_file)
+            sr = info.samplerate
+            duration_sec = info.frames / sr
 
-def extract_time_series_from_conversation(mp3_path, sample_rate=22050, frame_length=2048, hop_length=512, threshold = 0.02):
-    """
-    Extracts a time series of features from a conversation.
-    """
-    audio, sr = loadMp3AndConvertToTimeseries(mp3_path, sample_rate=sample_rate)
+            metadata.append((
+                os.path.basename(mp3_file),
+                round(duration_sec, 2),
+                sr,
+                label
+            ))
 
-    # Extract speech regions
-    speech_segments, rms, speech_detected = extract_speaker_segments(audio, frame_length, hop_length, threshold)
+        except Exception as e:
+            print(f"❌ Failed to read {mp3_file}: {e}")
+            metadata.append((
+                os.path.basename(mp3_file),
+                "ERROR",
+                "ERROR",
+                label
+            ))
 
-    # Create time series based on RMS energy
-    time_series = rms[speech_segments]  # Filter only active regions
-
-    # Return time series and energy
-    return time_series, speech_detected
+    return metadata
 
 def scale_and_resample_timeseries(time_series, timeseries_length=512):
     """
@@ -75,49 +93,33 @@ def scale_and_resample_timeseries(time_series, timeseries_length=512):
 
     return time_series_normalized
 
-def write_csv(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="output", use_pandas=True, verbose=True):
-    if formatted_datetime is None:
-        formatted_datetime = returnFormattedDateTimeNow()
+def extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=512, threshold=0.02, resample=False, target_length=40, frame_length=2048):
+    # Step 1: Compute RMS and MFCC
+    rms = librosa.feature.rms(y=audio, hop_length=hop_length).flatten()
+    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length, n_fft=frame_length)
 
-    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+    # Step 2: Mask frames with low RMS (likely noise or silence)
+    valid_frames = rms > threshold
+    if not np.any(valid_frames):
+        if config['verbose']:
+            print("⚠️ No speech detected in this file.")
+        raise ValueError("No speech detected (all RMS below threshold).")
 
-    start_time = time.time()
-    if use_pandas:
-        pd.DataFrame(data).to_csv(filenameFull, index=False, header=False)
-    else:
-        with open(filenameFull, "w", newline="") as f:
-            csv.writer(f).writerows(data)
-    # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
+    # Step 3: Filter MFCC frames
+    mfcc_filtered = mfcc[:, valid_frames]
 
-    if verbose:
-        print(f"✅ CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
+    mfcc_final = mfcc_filtered
+    if resample != False:
+        # Resample each MFCC to target length
+        mfcc_resampled = np.array([
+            np.interp(np.linspace(0, 1, target_length),
+                      np.linspace(0, 1, mfcc_filtered.shape[1]),
+                      mfcc_filtered[i]) for i in range(n_mfcc)
+        ])
+        mfcc_final = mfcc_resampled
 
-def createResultsFile(metadata_ALL, labels, total_timeseries_time, durationStats_Dict, samplerateStats_Dict, file_path_caseName,
-                      subfolderName, filenameVars, formatted_datetime=None, prefix="result"):
-    if formatted_datetime is None:
-        formatted_datetime = returnFormattedDateTimeNow()
-
-    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
-    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
-
-    # Save everything into a single CSV file
-    with open(filenameFull, "w") as f:
-        f.write(f"labels shape: {len(labels)}")
-        f.write(f"\nTotal timeseries time: {total_timeseries_time:.2f} seconds\n")
-
-        f.write("\nTHE METRICS FOR duration FOLLOW:\n")
-        json.dump(durationStats_Dict, f, indent=4, default=str)
-        f.write("\n\nTHE METRICS FOR samplerate FOLLOW:\n")
-        json.dump(samplerateStats_Dict, f, indent=4, default=str)
-
-        config_serializable = config.copy()
-        f.write("\n\nTHE WHOLE CONFIG FOLLLOWS:\n")
-        json.dump(config_serializable, f, indent=4)
-        f.write("\n\n")
-
-        f.write(metadata_ALL.to_csv(index=False).replace(",", ", "))
-
+    # Flatten to 1D feature vector
+    return mfcc_final.flatten()
 
 def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
     if len(audio) < hop_length * 2:
@@ -154,36 +156,11 @@ def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
             print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
         raise e
 
-def extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=512, threshold=0.02, resample=False, target_length=40):
-    # Step 1: Compute RMS and MFCC
-    rms = librosa.feature.rms(y=audio, hop_length=hop_length).flatten()
-    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length)
-
-    # Step 2: Mask frames with low RMS (likely noise or silence)
-    valid_frames = rms > threshold
-    if not np.any(valid_frames):
-        raise ValueError("No speech detected (all RMS below threshold).")
-
-    # Step 3: Filter MFCC frames
-    mfcc_filtered = mfcc[:, valid_frames]
-
-    mfcc_final = mfcc_filtered
-    if resample != False:
-        # Resample each MFCC to target length
-        mfcc_resampled = np.array([
-            np.interp(np.linspace(0, 1, target_length),
-                      np.linspace(0, 1, mfcc_filtered.shape[1]),
-                      mfcc_filtered[i]) for i in range(n_mfcc)
-        ])
-        mfcc_final = mfcc_resampled
-
-    # Flatten to 1D feature vector
-    return mfcc_final.flatten()
 
 def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
     labels = []
     labeled_files = []
-    for dirpath, _, filenames in walk(file_path):
+    for dirpath, _, filenames in os.walk(file_path):
         # Check if 'Control' or 'Dementia' is part of the directory path
         if "Control" in dirpath:
             label = "C"
@@ -197,19 +174,12 @@ def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
                 labeled_files.append((join(dirpath, f), label))
     return labels, labeled_files
 
-def printLabelCounts(labels):
-    counts = Counter(labels)
-    print(f"Label Counts: {dict(counts)}")
-
 # Main Workflow
-def logicForPitt():
-
+def logicForPitt(file_path_caseName = "Pitt"):
     file_path_base = os.path.abspath(os.path.join(os.getcwd(), "..", "05_Data"))
     print(file_path_base)
 
     subfolderName = '01_TimeSeriesData'
-
-    file_path_caseName = "Pitt"
     file_path = os.path.join(file_path_base, file_path_caseName)
 
     formatted_datetime = returnFormattedDateTimeNow()
@@ -219,7 +189,6 @@ def logicForPitt():
 
     metadata_ALL = extract_duration_and_samplerate(labeled_files)
     df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "sample_rate", "label"])
-  #  df_metadata.to_csv("duration_report.csv", index=False)
     stats_duration = plot_colName_distributions(df_metadata, colName="duration", title="Duration Distributions by Label")
     stats_sampleRate = plot_colName_distributions(df_metadata, colName="sample_rate", title="Sample Rate Distributions by Label")
 
@@ -234,18 +203,13 @@ def logicForPitt():
     valid_files = []  # Track filenames that are kept
     valid_labels = []  # Store labels for the kept files
     files_without_speech = []  # Track files with no speech detected
-    metadata_ALL = []
+    metadata_detailed_ALL = []
 
     start_time = time.time()
     for idx, (mp3_file, label) in enumerate(labeled_files):
         if idx % 20 == 0:
             print(f"Processing file #{idx}: {mp3_file}")
 
-        # Extract time series from conversation
-    #    time_series, speech_detected = extract_time_series_from_conversation(mp3_file, sample_rate, frame_length, hop_length, threshold)
-
-  #      if not speech_detected:
-   #         files_without_speech.append(mp3_file)  # Log the file if no speech is detected
         try:
             audio, sr = loadMp3AndConvertToTimeseries(mp3_file, sample_rate=sample_rate)
 
@@ -258,7 +222,7 @@ def logicForPitt():
             if feature_type == "raw":
                 features = audio  # raw waveform
             elif feature_type == "mfcc":
-                features = extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=hop_length, threshold=threshold, resample=resample, target_length=40)
+                features = extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=hop_length, threshold=threshold, resample=resample, target_length=40, frame_length=frame_length)
             elif feature_type == "audio_features":
                 features = extract_audio_features(audio, sr, hop_length=hop_length, verbose=False)
             else:
@@ -279,7 +243,7 @@ def logicForPitt():
             if config.get("verbose"):
                 duration_sec = len(audio) / sr
                 shape = output_timeseries.shape
-                metadata_ALL.append((os.path.basename(mp3_file), sr, full_sr, max_freq, duration_sec, shape, label))
+                metadata_detailed_ALL.append((os.path.basename(mp3_file), sr, full_sr, max_freq, duration_sec, shape, label))
                 print(f"✅ {os.path.basename(mp3_file)} | SR: {sr:.2f} | Original SR: {full_sr} | Max Freq: {max_freq:.2f} Hz | "
                       f"Duration: {duration_sec:.2f}s | Feature shape: {output_timeseries.shape} | Label: {label}")
 
@@ -299,7 +263,7 @@ def logicForPitt():
     # Now, filter labels based on valid_files
     assert len(output_timeseries_ALL) == len(valid_labels), "Mismatch between time series data and labels!"
 
-    df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "SR", "OriginalSR", "max_freq", "duration", "shape", "label"])
+    df_metadata = pd.DataFrame(metadata_detailed_ALL, columns=["filename", "SR", "OriginalSR", "max_freq", "duration", "shape", "label"])
     print(df_metadata.head())
 
     # df_metadata built from processed outputs
@@ -313,26 +277,24 @@ def logicForPitt():
 
     if feature_type in ["mfcc"]:
         filenameVars += f"_thresh{threshold}"
+        filenameVars += f"_nFFT{frame_length}"
 
     if feature_type in ["audio_features", "raw"]:
         filenameVars += f"_frameL{frame_length}"
 
     filenameVars += "_"
  #   printLabelCounts(valid_labels)
-    write_csv(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
+    write_csv01(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
+    write_csv01(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
 
-    #   output_filename = os.path.join(file_path_caseName, f"_sR{sr}_frameL{frame_length}_hopL{hop_length}_thresh{threshold}_{formatted_datetime}_output.csv")
-
-    write_csv(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="output", use_pandas=False)
-
-    createResultsFile(df_metadata, valid_labels, total_timeseries_time, stats_duration,
+    createResultsFile01(config, df_metadata, valid_labels, total_timeseries_time, stats_duration,
                       stats_sampleRate, file_path_caseName, subfolderName, filenameVars)
 
     stats_maxFreq = plot_colName_distributions(df_metadata, colName="max_freq", title="Max Frequency Distributions by Label")
     returnDistribution(df_metadata['OriginalSR'], "Original SR")
 
 config = {
-    "sample_rate": 16000, #int(600 / 2), # None, int(22050 / 2)
+    "sample_rate": 22050, #int(600 / 2), # None, int(22050 / 2)
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.00,
@@ -341,4 +303,5 @@ config = {
     "verbose": True
 }
 
-logicForPitt()
+file_path_caseName = "Pitt"
+logicForPitt(file_path_caseName)

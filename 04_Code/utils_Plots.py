@@ -128,6 +128,29 @@ def plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+# ----- 02 -----
+def plot_clustering_metrics(metrics_dict):
+    clusters = metrics_dict["n_clusters"]
+    plt.figure(figsize=(6, 12))  # Taller figure for vertical layout
+
+    plt.subplot(3, 1, 1)
+    plt.plot(clusters, metrics_dict["silhouette"], marker='o')
+    plt.title("Silhouette Score")
+    plt.xlabel("n_clusters")
+
+    plt.subplot(3, 1, 2)
+    plt.plot(clusters, metrics_dict["ch_index"], marker='o')
+    plt.title("Calinski-Harabasz Index")
+    plt.xlabel("n_clusters")
+
+    plt.subplot(3, 1, 3)
+    plt.plot(clusters, metrics_dict["db_index"], marker='o')
+    plt.title("Davies-Bouldin Index (lower is better)")
+    plt.xlabel("n_clusters")
+
+    plt.tight_layout()
+    plt.show()
+
 
 # ----- 02 -----
 def plot_token_waveforms(windows, labels, token_id, sample_rate=11025, n_samples=5):
@@ -208,7 +231,7 @@ def plot_token_distribution_Bar(tokens, top_n=20):
     plt.show()
 
 # ----- 02 and 03 -----
-def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, random_state, title, remove_outliers=True):
+def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title, random_state=42, remove_outliers=True):
 
     print(f"\n ----- Starting algorithm - {algorithm} -----")
   #  print("Variance of features:", np.var(data, axis=0))

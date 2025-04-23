@@ -1,9 +1,11 @@
+import csv
 import json
 import os
-
-import librosa
-import soundfile as sf
+from collections import Counter
 from datetime import datetime
+import re
+import librosa
+import time
 import random
 import numpy as np
 import pandas as pd
@@ -18,8 +20,15 @@ def makeLabelsInt(labels):
     # print(labels)
     return labels.map({'C': 0, 'D': 1}).to_numpy()
 
-def returnFilepathToSubfolder(filename, subfolderName):
+def printLabelCounts(labels):
+    counts = Counter(labels)
+    print(f"Label Counts: {dict(counts)}")
 
+def print_data_info(data, labels, stage=""):
+    print(f"----- {stage} -----")
+    print(f"Labels shape = {labels.shape}, Data shape = {data.shape}")
+
+def returnFilepathToSubfolder(filename, subfolderName):
     # Get the current directory of script execution
     current_directory = os.getcwd()
 
@@ -74,7 +83,7 @@ def returnDataAndLabelsWithoutNA(data, labels, addIndexColumn = False):
         data["index"] = data.index
     return data, combined["label"]
 
-def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 0):
+def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTestVal = 0.5, random_state = 42):
     # Create indices for the data
     indices = np.arange(len(X_data))
 
@@ -93,6 +102,82 @@ def doTrainValTestSplit(X_data, Y_targets, test_val_ratio = 0.3, valRatio_fromTe
     print(f"Train: {len(Y_train)}, \nVal: {len(Y_val)}, \nTest: {len(Y_test)}")
 
     return X_train, X_val, X_test, Y_train, Y_val, Y_test, val_ratio, indices_train, indices_val, indices_test
+
+
+def trim_datetime_suffix(common_part):
+    return re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', common_part)
+def returnDistribution(dataToCount, name="Token", file=None, display=True):
+    output_lines = [f"{name} Distribution:"]
+    tokens, counts = np.unique(dataToCount, return_counts=True)
+    for token, count in zip(tokens, counts):
+        output_lines.append(f"{name} {token}: {count} instances")
+
+    # Output to file if file is given, else print to terminal
+    if file:
+        file.write("\n")
+        for line in output_lines:
+            file.write(line + "\n")
+    else:
+        if display:
+            print("\n")
+            for line in output_lines:
+                print(line)
+
+    return tokens, counts
+
+def dropInstancesUntilClassesBalance(data, labels):
+    labelClasses, counts = returnDistribution(labels, name="Label")
+    count_0 = counts[0]
+    count_1 = counts[1]
+
+    # Step 2: Determine which label is the majority class
+    majority_label = 0 if count_0 > count_1 else 1
+    minority_count = min(count_0, count_1)
+    majority_count = max(count_0, count_1)
+
+    # Step 3: Find indices of the majority class
+    labels_array = np.array(labels)
+    majority_indices = np.where(labels_array == majority_label)[0]
+
+    # Step 4: Randomly select excess indices to drop
+    num_to_drop = majority_count - minority_count
+    indices_to_drop = random.sample(list(majority_indices), num_to_drop)
+
+    # Step 5: Create mask to keep the rest
+    keep_mask = np.ones(len(labels), dtype=bool)
+    keep_mask[indices_to_drop] = False
+
+    # Apply mask to labels and any aligned array (e.g., data)
+    labels_balanced = labels_array[keep_mask]
+    data_balanced = data.iloc[keep_mask].reset_index(drop=True)
+    print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
+
+    return data_balanced, labels_balanced
+
+def read_padded_csv_with_lengths(filepath, pad_value=0.0):
+    # is used to load variable-length time series stored as CSV rows of unequal length, and outputs:
+    rows = []
+    lengths = []
+    max_len = 0
+
+    with open(filepath, 'r') as f:
+        for line in f:
+            row = [float(val) for val in line.strip().split(',') if val]
+            lengths.append(len(row))
+            max_len = max(max_len, len(row))
+            rows.append(row)
+
+    padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
+    df = pd.DataFrame(padded_rows)
+    return df, lengths
+
+def returnL2Distance(data, labels):
+    mean_0 = data[labels == 0].mean(axis=0)
+    mean_1 = data[labels == 1].mean(axis=0)
+
+    dist = np.linalg.norm(mean_0 - mean_1)
+    print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
+    return dist
 
 def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension
@@ -120,7 +205,125 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
+
+def write_csv01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="output", use_pandas=True, verbose=True):
+    if formatted_datetime is None:
+        formatted_datetime = returnFormattedDateTimeNow()
+
+    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
+    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+
+    start_time = time.time()
+    if use_pandas:
+        pd.DataFrame(data).to_csv(filenameFull, index=False, header=False)
+    else:
+        with open(filenameFull, "w", newline="") as f:
+            csv.writer(f).writerows(data)
+    # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
+
+    if verbose:
+        print(f"✅ CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
+
+def createResultsFile01(config, metadata_ALL, labels, total_timeseries_time, durationStats_Dict, samplerateStats_Dict, file_path_caseName,
+                      subfolderName, filenameVars, formatted_datetime=None, prefix="result"):
+    if formatted_datetime is None:
+        formatted_datetime = returnFormattedDateTimeNow()
+
+    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
+    filenameFull = returnFilepathToSubfolder(filename, subfolderName)
+
+    # Save everything into a single CSV file
+    with open(filenameFull, "w") as f:
+        f.write(f"labels shape: {len(labels)}")
+        f.write(f"\nTotal timeseries time: {total_timeseries_time:.2f} seconds\n")
+
+        f.write("\nTHE METRICS FOR duration FOLLOW:\n")
+        json.dump(durationStats_Dict, f, indent=4, default=str)
+        f.write("\n\nTHE METRICS FOR samplerate FOLLOW:\n")
+        json.dump(samplerateStats_Dict, f, indent=4, default=str)
+
+        config_serializable = config.copy()
+        f.write("\n\nTHE WHOLE CONFIG FOLLLOWS:\n")
+        json.dump(config_serializable, f, indent=4)
+        f.write("\n\n")
+
+        f.write(metadata_ALL.to_csv(index=False).replace(",", ", "))
+
+def SaveEmbeddingsToOutput02(filepath_data, embeddings, labels, subfolderName, formatted_datetime, indices=None, setType="NO", **kwargs):
+    case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
+    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
+
+    filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
+
+    # Helper function to generate paths dynamically
+    def generate_path(prefix):
+        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
+    # Writing to CSV with pandas (which is generally faster)
+    pd.DataFrame(embeddings).to_csv(generate_path("Embeddings"), index=False, header=False)
+    pd.DataFrame(labels).to_csv(generate_path("Labels"), index=False, header=False)
+    # Save indices only if provided
+    if indices is not None:
+        pd.DataFrame(indices).to_csv(generate_path("Indices"), index=False, header=False)
+
+    return
+def saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clusters_list, allDataShapes, allSegmenthapes,
+                    skipgram_history, total_skipgram_time, tokens_train, subfolderName, formatted_datetime, setType="NO", **kwargs):
+    case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
+    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
+
+    filename_variables = "".join(
+        f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
+
+    # Helper function to generate paths dynamically
+    def generate_path(prefix):
+        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
+
+    if isinstance(skipgram_history, dict):
+        df_history = pd.DataFrame(skipgram_history)
+    else:
+        df_history = pd.DataFrame(skipgram_history.history)
+    df_history.insert(0, "Epoch", range(1, len(df_history) + 1))  # Add epoch numbers
+    df_history = df_history.round(6)
+
+    filenameFull = generate_path("Results")
+    # Save everything into a single CSV file
+    with open(filenameFull, "w") as f:
+        f.write("INPUT FILENAMES:\n")
+        f.write(filepath_data);f.write("\n")
+        f.write(filepath_labels)
+
+        f.write("\nallDataShapes:")
+        json.dump(allDataShapes, f, indent=4)
+
+        f.write("\nallSegmenthapes:")
+        json.dump(allSegmenthapes, f, indent=4)
+
+        for key, value in all_metrics.items():
+            f.write(f"{key}: {value}\n")
+      #  f.write("\nClusters --- Training Time --- Silhouette Scores:\n")
+      #  for i in range(0, len(all_Silhouettes)):
+      #     f.write(f"{n_clusters_list[i]} --- {all_KMeans_times[i]:.6f}--- {all_Silhouettes[i]:.6f} \n")
+        df_metrics = pd.DataFrame(all_metrics) # Convert to DataFrame
+        df_metrics.to_csv(f, index=False) # Save to CSV
+
+        config_serializable = config.copy()
+        config_serializable["optimizer_skipgram"] = str(config["optimizer_skipgram"])  # Convert optimizer to string
+        config_serializable["skipgram_loss"] = str(config["skipgram_loss"])  # Convert L2
+        config_serializable["scaler"] = str(config.get("scaler", ""))
+        f.write("\nTHE WHOLE CONFIG FOLLLOWS:")
+        json.dump(config_serializable, f, indent=4)
+
+        f.write("\nSKIPGRAM MODEL HISTORY:\n")
+        df_history.to_csv(f, index=False)
+
+        f.write(f"Total Skipgram time: {total_skipgram_time:.2f} seconds\n")
+
+        returnDistribution(tokens_train, "Token", file=f)
+
+    return
+
+
+def saveTrainingMetricsToFile(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
                               filepath_data, fileNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
@@ -190,132 +393,3 @@ def saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, 
 
     print(f"All results saved to {filenameFull}!")
     return filenameFull
-
-import re
-def trim_datetime_suffix(common_part):
-    return re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', common_part)
-
-def returnDistribution(dataToCount, name="Token", file=None, display=True):
-    output_lines = [f"{name} Distribution:"]
-    tokens, counts = np.unique(dataToCount, return_counts=True)
-    for token, count in zip(tokens, counts):
-        output_lines.append(f"{name} {token}: {count} instances")
-
-    # Output to file if file is given, else print to terminal
-    if file:
-        file.write("\n")
-        for line in output_lines:
-            file.write(line + "\n")
-    else:
-        if display:
-            print("\n")
-            for line in output_lines:
-                print(line)
-
-    return tokens, counts
-
-def dropInstancesUntilClassesBalance(data, labels):
-    labelClasses, counts = returnDistribution(labels, name="Label")
-    count_0 = counts[0]
-    count_1 = counts[1]
-
-    # Step 2: Determine which label is the majority class
-    majority_label = 0 if count_0 > count_1 else 1
-    minority_count = min(count_0, count_1)
-    majority_count = max(count_0, count_1)
-
-    # Step 3: Find indices of the majority class
-    labels_array = np.array(labels)
-    majority_indices = np.where(labels_array == majority_label)[0]
-
-    # Step 4: Randomly select excess indices to drop
-    num_to_drop = majority_count - minority_count
-    indices_to_drop = random.sample(list(majority_indices), num_to_drop)
-
-    # Step 5: Create mask to keep the rest
-    keep_mask = np.ones(len(labels), dtype=bool)
-    keep_mask[indices_to_drop] = False
-
-    # Apply mask to labels and any aligned array (e.g., data)
-    labels_balanced = labels_array[keep_mask]
-    data_balanced = data.iloc[keep_mask].reset_index(drop=True)
-    print(f"Balanced class counts: {np.unique(labels_balanced, return_counts=True)}")
-
-    return data_balanced, labels_balanced
-
-def read_padded_csv_with_lengths(filepath, pad_value=0.0):
-    # is used to load variable-length time series stored as CSV rows of unequal length, and outputs:
-    rows = []
-    lengths = []
-    max_len = 0
-
-    with open(filepath, 'r') as f:
-        for line in f:
-            row = [float(val) for val in line.strip().split(',') if val]
-            lengths.append(len(row))
-            max_len = max(max_len, len(row))
-            rows.append(row)
-
-    padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
-    df = pd.DataFrame(padded_rows)
-    return df, lengths
-
-def analyze_audio(file_path, target_sr=44100):
-    # Load audio (converts to mono by default)
-    y, sr = librosa.load(file_path, sr=target_sr)
-
-    # Duration in seconds
-    duration = librosa.get_duration(y=y, sr=sr)
-
-    # Perform FFT to get frequency components
-    fft = np.abs(np.fft.rfft(y))
-    freqs = np.fft.rfftfreq(len(y), 1 / sr)
-
-    # Threshold to ignore noise (e.g., 1% of max)
-    threshold = 0.01 * np.max(fft)
-    threshold = 0.00
-    max_freq = freqs[fft > threshold].max() if any(fft > threshold) else 0
-
-    return sr, duration, max_freq
-
-def extract_duration_and_samplerate(labeled_files, verbose=True):
-    """
-    Returns a list of tuples: (filename, duration_sec, sample_rate, label)
-    Safely extracts duration and sampling rate without loading full audio.
-    """
-    metadata = []
-
-    for idx, (mp3_file, label) in enumerate(labeled_files):
-        if verbose and idx % 20 == 0:
-            print(f"🔍 Checking file #{idx}: {mp3_file}")
-
-        try:
-            info = sf.info(mp3_file)
-            sr = info.samplerate
-            duration_sec = info.frames / sr
-
-            metadata.append((
-                os.path.basename(mp3_file),
-                round(duration_sec, 2),
-                sr,
-                label
-            ))
-
-        except Exception as e:
-            print(f"❌ Failed to read {mp3_file}: {e}")
-            metadata.append((
-                os.path.basename(mp3_file),
-                "ERROR",
-                "ERROR",
-                label
-            ))
-
-    return metadata
-
-def returnL2Distance(data, labels):
-    mean_0 = data[labels == 0].mean(axis=0)
-    mean_1 = data[labels == 1].mean(axis=0)
-
-    dist = np.linalg.norm(mean_0 - mean_1)
-    print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
-    return dist

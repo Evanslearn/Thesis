@@ -1,17 +1,14 @@
-import json
 import os
-import random
 import time
+import traceback
 from collections import defaultdict
-
 import numpy as np
 import pandas as pd
 
 from keras import Model
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 from sklearn.neighbors import KNeighborsClassifier
 
 import tensorflow as tf
@@ -25,6 +22,7 @@ from utils00 import (
     doTrainValTestSplit,
     readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
     returnDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
+    saveResultsFile02, SaveEmbeddingsToOutput02, print_data_info,
 )
 from utils_Plots import (
     plotSilhouetteVsNClusters,
@@ -33,7 +31,7 @@ from utils_Plots import (
     plot_token_waveforms,
     plot_token_spectrograms,
     plot_umap_of_segments,
-    plot_tsne_of_segments
+    plot_tsne_of_segments, plot_clustering_metrics
 )
 
 
@@ -41,34 +39,50 @@ def find_optimal_clusters(data, n_clusters_list):
     """Find the optimal number of clusters using silhouette score."""
     best_n_clusters, best_score, best_model  = None, -1, None
 
-    all_Silhouettes = []
-    all_KMeans_times = []
+    all_metrics = {
+        "silhouette": [],
+        "ch_index": [],
+        "db_index": [],
+        "times": [],
+        "n_clusters": []
+    }
+
     for n_clusters in n_clusters_list:
         start_time = time.perf_counter()  # Get current time at start
 
         kmeans = KMeans(n_clusters=n_clusters, n_init=config["n_init"], random_state=config["random_state"])
         try:
             cluster_labels = kmeans.fit_predict(data)
-            score = silhouette_score(data, cluster_labels)
-        except:
-            score = -0.001001
-        all_Silhouettes.append(score)
 
-        end_time = time.perf_counter()  # Get current time at end
-        kMeans_time = end_time - start_time  # Subtract the time at start and time at end, to find the total run time
-        all_KMeans_times.append(kMeans_time)
-        print(f"Clusters = {n_clusters} --- Training_Time = {kMeans_time:.6f} --- Silhouette score = {score:.6f}")
-        if score > best_score:
-            best_n_clusters, best_score, best_model = n_clusters, score, kmeans
+            sil = silhouette_score(data, cluster_labels)
+            ch = calinski_harabasz_score(data, cluster_labels)
+            db = davies_bouldin_score(data, cluster_labels)
+        except Exception as e:
+            print(f"❌ Error for {n_clusters} clusters: {str(e)}")
+            traceback.print_exc()
+            sil, ch, db = -9999.0, -9999.0, 9999.0  # Clearly bad values
+            kmeans = None  # Mark this model as invalid
 
 
+        timeElapsed = time.perf_counter() - start_time
 
-    return best_n_clusters, best_model, best_score, all_Silhouettes, all_KMeans_times
+        all_metrics["silhouette"].append(sil)
+        all_metrics["ch_index"].append(ch)
+        all_metrics["db_index"].append(db)
+        all_metrics["times"].append(timeElapsed)
+        all_metrics["n_clusters"].append(n_clusters)
+
+        print(f"n_clusters={n_clusters} | Sil: {sil:.4f} | CH: {ch:.2f} | DBI: {db:.4f} | Time: {timeElapsed:.2f}s")
+
+        if kmeans is not None and sil > best_score:
+            best_n_clusters, best_score, best_model = n_clusters, sil, kmeans
+
+    return best_n_clusters, best_model, best_score, all_metrics
 
 def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     """Train a tokenizer using K-means and k-NN."""
 
-    n_clusters, kmeans, best_silhouette, all_Silhouettes, all_KMeans_times = find_optimal_clusters(data, range_n_clusters)
+    n_clusters, kmeans, best_silhouette, all_metrics = find_optimal_clusters(data, range_n_clusters)
     print(f"\nOptimal number of clusters: {n_clusters}")
 
     tokens = kmeans.predict(data)
@@ -76,13 +90,11 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
 
     # Step 3: Train k-NN classifier
     knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens)
-    return kmeans, knn, tokens, n_clusters, best_silhouette, all_Silhouettes, all_KMeans_times
+    return kmeans, knn, tokens, n_clusters, best_silhouette, all_metrics
 
 # ----- -----     SKIP GRAM     ----- -----
 def generate_skipgram_pairs(sequence, vocab_size, window_size=2):
-    """
-    Generate skip-gram pairs using TensorFlow's skipgrams utility.
-    """
+    """Generate skip-gram pairs using TensorFlow's skipgrams utility."""
     pairs, labels = skipgrams(
         sequence,
         vocabulary_size=vocab_size,
@@ -104,7 +116,6 @@ def build_skipgram_model(vocab_size, embedding_dim, loss = "sparse_categorical_c
 
 def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50, window_size=2, epochs=10, loss="sparse_categorical_crossentropy"):
     """Train a skip-gram model on the tokenized corpus, respecting conversation boundaries."""
-
     all_pairs = []
     all_labels = []
 
@@ -253,32 +264,9 @@ def get_sequence_embedding(token_sequence, model):
         weights = np.arange(1, len(token_sequence) + 1)  # Linear weight increase
         sequence_embedding = np.average(token_embedding, axis=0, weights=weights)
     else:
-        raise "NO sequenceEmbeddingAveragingMethod DEFINED"
+        raise ValueError("NO sequenceEmbeddingAveragingMethod DEFINED")
 
     return sequence_embedding
-
-def SaveEmbeddingsToOutput(embeddings, labels, subfolderName, formatted_datetime, indices=None, setType="NO", **kwargs):
-
-    case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
-    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
-
-    filename_variables = "".join(f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
-
-    # Helper function to generate paths dynamically
-    def generate_path(prefix):
-        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
-    # Writing to CSV with pandas (which is generally faster)
-    pd.DataFrame(embeddings).to_csv(generate_path("Embeddings"), index=False, header=False)
-    pd.DataFrame(labels).to_csv(generate_path("Labels"), index=False, header=False)
-    # Save indices only if provided
-    if indices is not None:
-        pd.DataFrame(indices).to_csv(generate_path("Indices"), index=False, header=False)
-
-    return
-
-def print_data_info(data, labels, stage=""):
-    print(f"----- {stage} -----")
-    print(f"Labels shape = {labels.shape}, Data shape = {data.shape}")
 
 def scale_split_data(scaler_class, data, indices, enable_scaling=False, fit=False, rowWiseScaling=True):
     subset = data.iloc[indices].copy()
@@ -312,59 +300,6 @@ def group_tokens_by_conversation(tokens, origins):
         conv_token_map[conv_id].append(token)
     return conv_token_map
 
-
-def saveResultsFile(filepath_data, filepath_labels, all_Silhouettes, all_KMeans_times, n_clusters_list, allDataShapes, allSegmenthapes,
-                    skipgram_history, total_skipgram_time, tokens_train, subfolderName, formatted_datetime, setType="NO", **kwargs):
-    case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
-    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
-
-    filename_variables = "".join(
-        f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
-
-    # Helper function to generate paths dynamically
-    def generate_path(prefix):
-        return f"{subfolderName}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.csv"
-
-    if isinstance(skipgram_history, dict):
-        df_history = pd.DataFrame(skipgram_history)
-    else:
-        df_history = pd.DataFrame(skipgram_history.history)
-    df_history.insert(0, "Epoch", range(1, len(df_history) + 1))  # Add epoch numbers
-    df_history = df_history.round(6)
-
-    filenameFull = generate_path("Results")
-    # Save everything into a single CSV file
-    with open(filenameFull, "w") as f:
-        f.write("INPUT FILENAMES:\n")
-        f.write(filepath_data);f.write("\n")
-        f.write(filepath_labels)
-
-        f.write("\nallDataShapes:")
-        json.dump(allDataShapes, f, indent=4)
-
-        f.write("\nallSegmenthapes:")
-        json.dump(allSegmenthapes, f, indent=4)
-
-        f.write("\nClusters --- Training Time --- Silhouette Scores:\n")
-        for i in range(0, len(all_Silhouettes)):
-            f.write(f"{n_clusters_list[i]} --- {all_KMeans_times[i]:.6f}--- {all_Silhouettes[i]:.6f} \n")
-
-        config_serializable = config.copy()
-        config_serializable["optimizer_skipgram"] = str(config["optimizer_skipgram"])  # Convert optimizer to string
-        config_serializable["skipgram_loss"] = str(config["skipgram_loss"])  # Convert L2
-        config_serializable["scaler"] = str(config.get("scaler", ""))
-        f.write("\nTHE WHOLE CONFIG FOLLLOWS:")
-        json.dump(config_serializable, f, indent=4)
-
-        f.write("\nSKIPGRAM MODEL HISTORY:\n")
-        df_history.to_csv(f, index=False)
-
-        f.write(f"Total Skipgram time: {total_skipgram_time:.2f} seconds\n")
-
-        returnDistribution(tokens_train, "Token", file=f)
-
-    return
-
 def slice_timeseries_rowwise(data, lengths, window_length, stride):
     segments = []
     origins = []
@@ -377,7 +312,6 @@ def slice_timeseries_rowwise(data, lengths, window_length, stride):
             origins.append(idx)
 
     return np.array(segments), np.array(origins)
-
 
 # Example Usage
 def mainLogic():
@@ -419,9 +353,6 @@ def mainLogic():
     segment_stride = config["stride"]
 
     # Slice conversations into smaller time patches per split
-  #  segments_train, origins_train = slice_timeseries_rowwise(data_train, segment_window_length, segment_stride)
- #   segments_val, origins_val = slice_timeseries_rowwise(data_val, segment_window_length, segment_stride)
-  #  segments_test, origins_test = slice_timeseries_rowwise(data_test, segment_window_length, segment_stride)
     segments_train, origins_train = slice_timeseries_rowwise(data_train, lengths_train, segment_window_length, segment_stride)
     segments_val, origins_val = slice_timeseries_rowwise(data_val, lengths_val, segment_window_length, segment_stride)
     segments_test, origins_test = slice_timeseries_rowwise(data_test, lengths_test, segment_window_length, segment_stride)
@@ -436,11 +367,9 @@ def mainLogic():
     print(f"Origins_train.shape ->   {origins_train.shape}")
 
     # Train the tokenizer
-    kmeans_model, knn_model, tokens_train, n_clusters, best_silhouette, all_Silhouettes, all_KMeans_times = train_tokenizer(
+    kmeans_model, knn_model, tokens_train, n_clusters, best_silhouette, all_metrics = train_tokenizer(
         segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"])
     best_silhouette = np.round(best_silhouette, 4)
-
- #   plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes)
 
     # Token assignment step — we train a classifier (k-NN) on the clustered segments
     # as suggested in Signal2Vec: token extraction (KMeans), token assignment (classifier)
@@ -536,14 +465,14 @@ def mainLogic():
     subfoldername = config["output_folder"]
     formatted_datetime = returnFormattedDateTimeNow()
 
-    SaveEmbeddingsToOutput(trainValTest_embeddings, labels_all, subfoldername, formatted_datetime, indices_all, **name_kwargs)
+    SaveEmbeddingsToOutput02(filepath_data, trainValTest_embeddings, labels_all, subfoldername, formatted_datetime, indices_all, **name_kwargs)
 
     name_kwargs_train = { "train": "Set", **name_kwargs}
     name_kwargs_val = {"val": "Set", **name_kwargs}
     name_kwargs_test = {"test": "Set", **name_kwargs}
-    SaveEmbeddingsToOutput(train_embeddings, labels_train, subfoldername, formatted_datetime, indices_train, **name_kwargs_train)
-    SaveEmbeddingsToOutput(val_embeddings, labels_val, subfoldername, formatted_datetime, indices_val, **name_kwargs_val)
-    SaveEmbeddingsToOutput(test_embeddings, labels_test, subfoldername, formatted_datetime, indices_test, **name_kwargs_test)
+    SaveEmbeddingsToOutput02(filepath_data, train_embeddings, labels_train, subfoldername, formatted_datetime, indices_train, **name_kwargs_train)
+    SaveEmbeddingsToOutput02(filepath_data, val_embeddings, labels_val, subfoldername, formatted_datetime, indices_val, **name_kwargs_val)
+    SaveEmbeddingsToOutput02(filepath_data, test_embeddings, labels_test, subfoldername, formatted_datetime, indices_test, **name_kwargs_test)
 
     allDataShapes = {
         "data": data.shape,
@@ -557,14 +486,15 @@ def mainLogic():
         "segments_test": segments_test.shape,
     }
 
-    saveResultsFile(filepath_data, filepath_labels, all_Silhouettes, all_KMeans_times, n_clusters_list, allDataShapes,
+    saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clusters_list, allDataShapes,
                     allSegmenthapes, skipgram_history, total_skipgram_time, tokens_train, subfoldername, formatted_datetime, **name_kwargs)
 
  #   plot_umap_of_segments(train_embeddings, labels_train_seq)
-    plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes)
+    plotSilhouetteVsNClusters(n_clusters_list, all_metrics['silhouette'])
+    plot_clustering_metrics(all_metrics)
     plot_token_distribution_Bar(tokens_train)
     #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
-    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], config["random_state"], f"with {n_clusters} Clusters", "no")
+    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters", config["random_state"], "no")
 
 
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
@@ -582,6 +512,8 @@ filepath_data = "Pitt_output_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
 filepath_data = "Pitt_output_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
 filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
 filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
+#filepath_data = "Pitt_output_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv" # crashed
+#filepath_data = "Pitt_output_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
 
 filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
 filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
@@ -598,19 +530,21 @@ filepath_labels = "Pitt_labels_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
 filepath_labels = "Pitt_labels_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
 filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
 filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
+#filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv"
+#filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {
     "n_clusters_min": 2,        # Min number of clusters for KMeans - 2
     "n_clusters_max": 10,       # Max number of clusters for KMeans - 10
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
-    "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
+ #   "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
     "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
     "knn_neighbors": 5,        # Number of neighbors for k-NN - 50
-    "window_size": 4096,    # 2       # Window size for sequence generation - 10
-    "stride": 2048,          # 8      # Stride for sequence generation - 1
+    "window_size": 8000,    # 2       # Window size for sequence generation - 10
+    "stride": 4000,          # 8      # Stride for sequence generation - 1
     "embedding_dim": 100,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
     "epochs": 10,                # Number of training epochs

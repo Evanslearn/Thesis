@@ -43,7 +43,7 @@ from utils00 import (
     saveTrainingMetricsToFile,
     makeLabelsInt, readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
     trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
-    returnL2Distance
+    returnL2Distance, print_data_info
 )
 from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution, \
     calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix
@@ -97,6 +97,7 @@ def f1_score(y_true, y_pred):
 ### Global Configuration Dictionary ###
 CONFIG = {
     "split_options": ["NO"], # "YES", "NO"
+    "random_state": 42,
     "batch_size": 128,
     "epochs": 50,
     "loss": "binary_crossentropy",
@@ -174,14 +175,14 @@ def loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels
     folderPath = os.getcwd() + "/01_TimeSeriesData/"
     data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
 
-    print(f"BEFORE DROPNA + PADDING -> data.shape {data.shape}")
+    print_data_info(data, labels, "BEFORE DROPNA + PADDING")
     # Clean first
  #   data, labels = returnDataAndLabelsWithoutNA(data, labels)
     # Pad AFTER filtering
  #   data, _ = pad_variable_length_timeseries(data)
 
     data, labels = returnDataAndLabelsWithoutNA(data, labels)
-    print(f"AFTER DROPNA + PADDING -> data.shape {data.shape}")
+    print_data_info(data, labels, "AFTER DROPNA + PADDING")
 
     labels = makeLabelsInt(labels)
     return data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS
@@ -313,20 +314,66 @@ def model03_VangRNN(data, labels, needSplitting, config):
     subfolderName = "03_ClassificationResults"
     suffix = f"Splitting_{needSplitting}"
 
+    from sklearn.metrics import classification_report, confusion_matrix
+    import pandas as pd
+    import numpy as np
+
+    def evaluate_model(name, clf, X_val, Y_val, X_test, Y_test):
+        print(f"\n🔍 Training: {name}")
+        clf.fit(X_val, Y_val)  # You can swap this with training on training data
+
+        def get_predictions_and_metrics(X, Y, set_name):
+            preds = clf.predict(X)
+            report_dict = classification_report(Y, preds, output_dict=True)
+            report_df = pd.DataFrame(report_dict).transpose()
+            report_df["set"] = set_name
+
+            acc = report_dict["accuracy"] if "accuracy" in report_dict else report_dict.get("weighted avg", {}).get(
+                "f1-score")
+            cm = confusion_matrix(Y, preds)
+
+            print(f"\n📊 {set_name.title()} Performance for {name}:")
+            print(classification_report(Y, preds))
+            print(f"{set_name.title()} Accuracy: {acc:.4f}")
+            print("Confusion Matrix:")
+            print(cm)
+
+            return report_df
+
+        val_df = get_predictions_and_metrics(X_val, Y_val, "validation")
+        test_df = get_predictions_and_metrics(X_test, Y_test, "test")
+
+        combined_df = pd.concat([val_df, test_df], axis=0)
+        combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
+
+        print(f"\n📋 Combined classification report for {name}:")
+        print(combined_df.round(2))
+
+        return combined_df
+
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+    from sklearn.ensemble import RandomForestClassifier
+    from xgboost import XGBClassifier
+
+    def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test):
+        models = {
+            "Logistic Regression": LogisticRegression(max_iter=1000),
+            "SVM (RBF Kernel)": SVC(kernel='rbf', probability=True),
+            "Random Forest": RandomForestClassifier(n_estimators=100),
+            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+        }
+
+        for name, clf in models.items():
+            print(f"\n===== {name} =====")
+            clf.fit(X_train, Y_train)
+            evaluate_model(name, clf, X_val, Y_val, X_test, Y_test)
+
     # Save training, validation, and test data using the helper function
     for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
         save_data_to_csv(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
 
-    L2distance_Train = returnL2Distance(X_train, Y_train)
-    L2distance_Val = returnL2Distance(X_val, Y_val)
-    L2distance_Test = returnL2Distance(X_test, Y_test)
-    L2distance_All = {
-        "L2distance_Train": L2distance_Train,
-        "L2distance_Val": L2distance_Val,
-        "L2distance_Test": L2distance_Test
-    }
-
-    def tryThisTomorrow(X_train, X_val, X_test):
+    def classifyWithSimpleModels(X_train, X_val, X_test):
 
    #     plot_tsnePCAUMAP(PCA, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
    #     plot_tsnePCAUMAP(TSNE, X_train, Y_train, 10, 42, "of Signal2Vec Embeddings", remove_outliers=False)
@@ -369,10 +416,10 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
         # Dictionary of models
         models = {
-            "Logistic Regression": LogisticRegression(max_iter=1000),
-            "SVM (RBF Kernel)": SVC(kernel='rbf'),
-            "Random Forest": RandomForestClassifier(n_estimators=100),
-            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+            "Logistic Regression": LogisticRegression(max_iter=1000, random_state=random_state),
+            "SVM (RBF Kernel)": SVC(kernel='rbf', random_state),
+            "Random Forest": RandomForestClassifier(n_estimators=100, random_state),
+            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state)
             # use_label_encoder=False suppresses warning
         }
 
@@ -397,8 +444,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
             print(f"Test Accuracy: {test_acc:.4f}")
             print("Test Confusion Matrix:")
             print(confusion_matrix(Y_test, test_preds))
-
-
 
             # Predict both sets
             val_preds = clf.predict(X_val)
@@ -473,10 +518,31 @@ def model03_VangRNN(data, labels, needSplitting, config):
         plt.plot(labelSet)
     #    plt.show()
 
+    print(" ----- CLASSICAL MODELS -----")
     print(" ----- NOT NORMALIZED -----")
-  #  tryThisTomorrow(X_train, X_val, X_test)
+    L2distance_Train = returnL2Distance(X_train, Y_train)
+    L2distance_Val = returnL2Distance(X_val, Y_val)
+    L2distance_Test = returnL2Distance(X_test, Y_test)
+    L2distance_All = {
+        "L2distance_Train": L2distance_Train,
+        "L2distance_Val": L2distance_Val,
+        "L2distance_Test": L2distance_Test
+    }
+    print(L2distance_All)
+    train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test)
+  #  classifyWithSimpleModels(X_train, X_val, X_test)
     print(" ----- NORMALIZED ----- ")
-  #  tryThisTomorrow(X_train_normalized, X_val_normalized, X_test_normalized)
+    L2distance_Train = returnL2Distance(X_train_normalized, Y_train)
+    L2distance_Val = returnL2Distance(X_val_normalized, Y_val)
+    L2distance_Test = returnL2Distance(X_test_normalized, Y_test)
+    L2distance_All = {
+        "L2distance_Train": L2distance_Train,
+        "L2distance_Val": L2distance_Val,
+        "L2distance_Test": L2distance_Test
+    }
+    print(L2distance_All)
+    train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test)
+  #  classifyWithSimpleModels(X_train_normalized, X_val_normalized, X_test_normalized)
  #   sys.exit()
    # return
 
@@ -543,7 +609,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     predictions = model.predict(X_test_normalized)
 
-    # MAYBE DO THIS TO CONTROL PREDICTION
     # Apply default threshold (0.5) if not tuning
     preds_binary = (predictions.flatten() >= 0.5).astype(int)
 
@@ -586,7 +651,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
-    saveTrainingMetricsToFile(history, model, config, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
+    saveTrainingMetricsToFile(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
                               fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
     plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)

@@ -66,6 +66,10 @@
 * Commited some changes: Create results file for 01, scale row-wise and plots for clustering quality in 02, broke down utils into two parts (simple and plots)
 ## 2025/04/22
 * 01 extract original sr, max freq, 02 plot most frequent tokens, 03 include f1 and confusion matrix
+# 2025/04/23
+* code cleanup for 01, 02, 03 03, 
+    * Moved all write file logic to utils, added extra clustering evaluation metrics for kMeans (still optimize with silhouette)
+    * logic for shuffling labels to challenge robustness of modal, plot for class labels distirbution per set, more clustering metrics in 02
 
 # TO DO
 * Experiment with sampling of the mp3 files?

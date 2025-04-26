@@ -16,6 +16,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Dense, Flatten
 from tensorflow.keras.preprocessing.sequence import skipgrams
+from umap import UMAP
 
 from utils00 import (
     makeLabelsInt,
@@ -99,6 +100,7 @@ def generate_skipgram_pairs(sequence, vocab_size, window_size=2):
         sequence,
         vocabulary_size=vocab_size,
         window_size=window_size,
+        negative_samples=0
     )
     pairs = np.array(pairs, dtype=np.int32).reshape(-1, 2)
     labels = np.array(labels, dtype=np.int32)
@@ -275,6 +277,14 @@ def scale_split_data(scaler_class, data, indices, enable_scaling=False, fit=Fals
 
     if rowWiseScaling:
         def scale_row(row):
+            # Drop non-signal columns like 'index' if present
+            dropped_cols = []
+            if "index" in row.index:
+                dropped_cols.append("index")
+                row = row.drop("index")
+       #     if dropped_cols:
+       #         print(f"⚠️ Dropping columns from row {row.name}: {dropped_cols}")
+
             values = row.dropna().values.astype(float).reshape(-1, 1)
             scaled = scaler_class().fit_transform(values).flatten()
             return pd.Series(scaled)
@@ -306,10 +316,17 @@ def slice_timeseries_rowwise(data, lengths, window_length, stride):
 
     for idx, row in data.iterrows():
         row_values = row.values[:lengths[idx]]  # only use the real part
+
+        if len(row_values) < window_length:
+            print(f"⚠️ Skipping sample {idx} — too short (length={len(row_values)}, needed={window_length})")
+            continue  # Skip this sample entirely
+
         for i in range(0, len(row_values) - window_length + 1, stride):
             segment = row_values[i:i + window_length]
             segments.append(segment)
             origins.append(idx)
+
+    print(f"\n✅ Finished slicing: {len(segments)} segments from {len(set(origins))} samples (skipped {len(data) - len(set(origins))})")
 
     return np.array(segments), np.array(origins)
 
@@ -329,7 +346,7 @@ def mainLogic():
     # ----- NAKE COUNT OF 0s AND 1s BE THE SAME -----
   #  data, labels = dropInstancesUntilClassesBalance(data, labels)
 
-    _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels)
+    _, _, _, _, _, _, val_ratio, indices_train, indices_val, indices_test = doTrainValTestSplit(data, labels, random_state=config['random_state'])
 
     # Scale and fit on training
     data_train = scale_split_data(config["scaler"], data, indices_train, enable_scaling=config["enable_scaling"], fit=True, rowWiseScaling=config["rowWiseScaling"])
@@ -490,11 +507,24 @@ def mainLogic():
                     allSegmenthapes, skipgram_history, total_skipgram_time, tokens_train, subfoldername, formatted_datetime, **name_kwargs)
 
  #   plot_umap_of_segments(train_embeddings, labels_train_seq)
-    plotSilhouetteVsNClusters(n_clusters_list, all_metrics['silhouette'])
-    plot_clustering_metrics(all_metrics)
-    plot_token_distribution_Bar(tokens_train)
+    setType = "NO"
+    filenamePrefix_SilVsNCL = "SilVsNCL"
+    filenamePrefix_metricsVsNCL = "MetricsVsNCL"
+    filenamePrefix_TokensDistr = "TokensDistribution"
+    filenamePrefix_TSNE = "TSNE"
+    filenamePrefix_UMAP = "UMAP"
+    top_n = 20
+
+    plotSilhouetteVsNClusters(n_clusters_list, all_metrics['silhouette'], filenamePrefix_SilVsNCL, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
+    plot_clustering_metrics(all_metrics, filenamePrefix_metricsVsNCL, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
+    plot_token_distribution_Bar(tokens_train, top_n, filenamePrefix_TokensDistr, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
     #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
-    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters", config["random_state"], "no")
+    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters",
+                     filenamePrefix_TSNE, filepath_data, subfoldername, formatted_datetime, setType,
+                     config["random_state"], "no", **name_kwargs)
+    plot_tsnePCAUMAP(UMAP, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters",
+                     filenamePrefix_UMAP, filepath_data, subfoldername, formatted_datetime, setType,
+                     config["random_state"], "no", **name_kwargs)
 
 
 filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
@@ -543,9 +573,9 @@ config = {
     "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
     "knn_neighbors": 5,        # Number of neighbors for k-NN - 50
-    "window_size": 8000,    # 2       # Window size for sequence generation - 10
-    "stride": 4000,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 100,       # Dimension of word embeddings - 300
+    "window_size": 1024,    # 2       # Window size for sequence generation - 10
+    "stride": 512,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 200,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
     "epochs": 10,                # Number of training epochs
     "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper

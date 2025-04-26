@@ -120,6 +120,9 @@ def extract_mfcc_timeseries(audio, sr, n_mfcc=13, hop_length=512, threshold=0.02
 
     # Flatten to 1D feature vector
     return mfcc_final.flatten()
+    # TO DO - COULD TRY THIS, TO BETTER PRESERVE MEANING (FLATTETING NOT THAT MEANINGFUL)
+    #return mfcc_final.T  # Each row = 1 time step
+
 
 def extract_audio_features(audio, sr, n_mfcc=13, hop_length=512, verbose=False):
     if len(audio) < hop_length * 2:

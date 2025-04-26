@@ -205,7 +205,6 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-
 def write_csv01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="output", use_pandas=True, verbose=True):
     if formatted_datetime is None:
         formatted_datetime = returnFormattedDateTimeNow()

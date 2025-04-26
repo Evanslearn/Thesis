@@ -256,7 +256,7 @@ def check_indicesEqual(indices_step02, indices_all):
         sys.exit()  # Terminate the execution
 
 
-def evaluate_model(name, clf, X_val, Y_val, X_test, Y_test):
+def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
     print(f"\n🔍 Training: {name}")
 
     def get_predictions_and_metrics(X, Y, set_name):
@@ -276,14 +276,36 @@ def evaluate_model(name, clf, X_val, Y_val, X_test, Y_test):
 
         return report_df
 
+    train_df = get_predictions_and_metrics(X_train, Y_train, "train")
     val_df = get_predictions_and_metrics(X_val, Y_val, "validation")
     test_df = get_predictions_and_metrics(X_test, Y_test, "test")
 
-    combined_df = pd.concat([val_df, test_df], axis=0)
+    combined_df = pd.concat([train_df, val_df, test_df], axis=0)
     combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
 
     print(f"\n📋 Combined classification report for {name}:")
     print(combined_df.round(2))
+
+    pd.set_option("display.max_columns", None)  # Show all columns
+    pd.set_option("display.width", 0)  # Let it auto-adjust to terminal width
+    pd.set_option("display.max_colwidth", None)  # Show full content in each cell
+    # Optional: Pivot for clearer side-by-side comparison
+    metrics_df = combined_df.reset_index()  # bring '0', '1', etc. into a column
+    pivot_df = metrics_df.pivot(index="index", columns="set", values=["precision", "recall", "f1-score", "support"])
+    # Flatten the MultiIndex column names (e.g., ('precision', 'train') → 'precision_train')
+    pivot_df.columns = [f"{metric}_{split}" for metric, split in pivot_df.columns]
+    # Optional: Reorder the columns
+    ordered_cols = []
+    for metric in ["precision", "recall", "f1-score", "support"]:
+        for split in ["train", "validation", "test"]:
+            col = f"{metric}_{split}"
+            if col in pivot_df.columns:
+                ordered_cols.append(col)
+    pivot_df = pivot_df[ordered_cols]  # safely reorder
+    print("\n📊 Pivoted view for side-by-side comparison:")
+    print(pivot_df.round(2))
+    pd.reset_option("display.max_columns")
+    pd.reset_option("display.width")
 
     def get_class_probabilities(clf, X):
         """Returns predicted probabilities or approximations for binary classifiers."""
@@ -315,7 +337,7 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
     for name, clf in models.items():
         print(f"\n===== {name} =====")
         clf.fit(X_train, Y_train)
-        evaluate_model(name, clf, X_val, Y_val, X_test, Y_test)
+        evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test)
 
 def model03_VangRNN(data, labels, needSplitting, config):
     # Extract hyperparameters
@@ -396,14 +418,14 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
 
-    plotClassBarPlots(Y_train, Y_val, Y_test)
+ #   plotClassBarPlots(Y_train, Y_val, Y_test)
     def shuffleLabelsRandomly(Y_train, Y_val, Y_test):
         np.random.seed(42)
         Y_train = np.random.permutation(Y_train)
         Y_val = np.random.permutation(Y_val)
         Y_test = np.random.permutation(Y_test)
         return Y_train, Y_val, Y_test
-  #  Y_train, Y_val, Y_test = shuffleLabelsRandomly(Y_train, Y_val, Y_test)
+#    Y_train, Y_val, Y_test = shuffleLabelsRandomly(Y_train, Y_val, Y_test)
 
 
     print(" ----- CLASSICAL MODELS -----")
@@ -444,7 +466,7 @@ def model03_VangRNN(data, labels, needSplitting, config):
     for method, label in zip(methods, labels):
         for X_data, suffix in datasets:
             print(f"\n🖼️ Plotting {label} {suffix}")
-            plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
+     #       plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
     # Only expand dims for RNNs

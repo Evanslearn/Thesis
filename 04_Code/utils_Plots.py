@@ -118,20 +118,42 @@ def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "
 
     return labelStats_Dict
 
+# ----- HELP -----
+
+def saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType="NO", **kwargs):
+    case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
+    case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
+
+    filename_variables = "".join(
+        f"{key}{value}".replace("{", "").replace("}", "") + "_" for key, value in kwargs.items()).rstrip("_")
+
+    # Helper function to generate paths dynamically
+    def generate_path(prefix):
+        return f"{subfoldername}/{prefix}_{case_type_str}{filename_variables}_{formatted_datetime}.png"
+
+    figureFullName = generate_path(filenamePrefix)
+
+    fig.savefig(figureFullName)
+    print(f"Saved {filenamePrefix} plot to:", figureFullName)
+
 # ----- 02 -----
-def plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes):
-    plt.figure(figsize=(8, 5))
+def plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType="NO", **kwargs):
+    # Create a 2x2 grid for subplots
+    fig = plt.figure(figsize=(8, 5))
     plt.plot(n_clusters_list, all_Silhouettes, marker='o', linestyle='-')
     plt.title("Silhouette Score vs Number of Clusters")
     plt.xlabel("Number of Clusters")
     plt.ylabel("Silhouette Score")
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+  #  plt.show()
+
+    saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
+
 # ----- 02 -----
-def plot_clustering_metrics(metrics_dict):
+def plot_clustering_metrics(metrics_dict, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs):
     clusters = metrics_dict["n_clusters"]
-    plt.figure(figsize=(6, 12))  # Taller figure for vertical layout
+    fig = plt.figure(figsize=(6, 12))  # Taller figure for vertical layout
 
     plt.subplot(3, 1, 1)
     plt.plot(clusters, metrics_dict["silhouette"], marker='o')
@@ -149,7 +171,9 @@ def plot_clustering_metrics(metrics_dict):
     plt.xlabel("n_clusters")
 
     plt.tight_layout()
-    plt.show()
+  #  plt.show()
+
+    saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
 
 # ----- 02 -----
@@ -220,18 +244,24 @@ def plot_umap_of_segments(segments, labels):
     plt.show()
 
 # ----- 02 -----
-def plot_token_distribution_Bar(tokens, top_n=20):
+def plot_token_distribution_Bar(tokens, top_n, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs):
     token_counts = Counter(tokens)
     top = token_counts.most_common(top_n)
     labels, values = zip(*top)
-    plt.bar(labels, values)
-    plt.title("Top Token Frequencies")
-    plt.xlabel("Token ID")
-    plt.ylabel("Count")
-    plt.show()
+
+    fig, ax = plt.subplots()
+    ax.bar(labels, values)
+    ax.set_title("Top Token Frequencies")
+    ax.set_xlabel("Token ID")
+    ax.set_ylabel("Count")
+  #  plt.show()
+
+    saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
 # ----- 02 and 03 -----
-def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title, random_state=42, remove_outliers=True):
+def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title,
+                     filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType,
+                     random_state=42, remove_outliers=True, **kwargs):
 
     print(f"\n ----- Starting algorithm - {algorithm} -----")
   #  print("Variance of features:", np.var(data, axis=0))
@@ -265,12 +295,13 @@ def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title, random_state=42
         raise ValueError("Invalid algorithm! Use TSNE, PCA, or UMAP.")
     transformed = transformer_alg.fit_transform(data)
 
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6))
     sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
     plt.title(f"{algorithm.__name__} Visualization " + title)
     plt.xlabel(f"{algorithm.__name__} Component 1"); plt.ylabel(f"{algorithm.__name__} Component 2")
-    plt.show()
+#    plt.show()
     print(f" ----- Finished algorithm - {algorithm} -----")
+    saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
 # ----- 03 -----
 def plotClassBarPlots(Y_train, Y_val, Y_test):

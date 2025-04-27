@@ -114,7 +114,7 @@ def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "
         ax.set_xlim(common_xlim)
 
     plt.suptitle(title, fontsize=20, weight='bold')
-    plt.show()
+#    plt.show()
 
     return labelStats_Dict
 

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from keras import Model
+from keras.callbacks import EarlyStopping
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
@@ -86,12 +87,12 @@ def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
     n_clusters, kmeans, best_silhouette, all_metrics = find_optimal_clusters(data, range_n_clusters)
     print(f"\nOptimal number of clusters: {n_clusters}")
 
-    tokens = kmeans.predict(data)
-    print(f"Tokens assigned to first 5 data points: {tokens[:5]}")  # Print first 5 token assignments
+    tokens_from_kmeans = kmeans.predict(data)
+    print(f"Tokens assigned to first 5 data points: {tokens_from_kmeans[:5]}")  # Print first 5 token assignments
 
     # Step 3: Train k-NN classifier
-    knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens)
-    return kmeans, knn, tokens, n_clusters, best_silhouette, all_metrics
+    knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens_from_kmeans)
+    return kmeans, knn, tokens_from_kmeans, n_clusters, best_silhouette, all_metrics
 
 # ----- -----     SKIP GRAM     ----- -----
 def generate_skipgram_pairs(sequence, vocab_size, window_size=2):
@@ -151,9 +152,22 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
 
     # Build and train the model
     model = build_skipgram_model(vocab_size, embedding_dim, loss)
-    history = model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1)
 
-    return model, history
+
+    early_stopping_callback = EarlyStopping(
+        monitor='loss',  # What to monitor ('loss', or 'val_loss' if validation split)
+        patience=config["early_stopping_patience"],  # How many epochs without improvement to wait
+        min_delta=config["early_stopping_min_delta"],  # Minimum change to be considered improvement
+        restore_best_weights=True,  # Restore best model weights automatically
+        verbose=1
+    ) if config.get("early_stopping", False) else None
+    callbacks = [early_stopping_callback] if early_stopping_callback else None
+
+    history = model.fit(pairs_context, pairs_target, epochs=epochs, batch_size=config["batch_size"], verbose=1, callbacks=callbacks)
+
+    epochEarlyStopped = early_stopping_callback.stopped_epoch if early_stopping_callback and early_stopping_callback.stopped_epoch > 0 else None
+
+    return model, history, epochEarlyStopped
 
 class SkipGramNCE(Model):
     def __init__(self, vocab_size, embedding_dim, num_negative_samples):
@@ -229,6 +243,16 @@ def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6
     else:
         raise ValueError(f"Unknown optimizer: {opt_name}")
 
+    # Early stopping config
+    early_stopping = config.get("early_stopping", False)
+    patience = config.get("early_stopping_patience", 3)
+    min_delta = config.get("early_stopping_min_delta", 1e-4)
+
+    best_loss = float('inf')
+    epochs_without_improvement = 0
+    best_weights = None
+    epochEarlyStopped = None
+
     history = {"loss": []}
     for epoch in range(epochs):
         start_time = time.time()
@@ -249,7 +273,26 @@ def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6
 
         print(f"Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f} - Time: {epoch_time:.2f} sec")
 
-    return model, history
+        # early stopping check
+        if early_stopping:
+            if best_loss - avg_loss > min_delta:
+                best_loss = avg_loss
+                best_weights = model.get_weights()
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+
+            if epochs_without_improvement >= patience:
+                print(f"✅ Early stopping triggered at epoch {epoch + 1}.")
+                epochEarlyStopped = epoch + 1
+                break
+
+    # after all epochs
+    if early_stopping and epochs_without_improvement >= patience and best_weights is not None:
+        model.set_weights(best_weights)
+        print(f"📦 Best model weights restored after early stopping. Patience = {patience}, and epochEarlyStopped = {epochEarlyStopped}")
+
+    return model, history, epochEarlyStopped
 
 # Function to get embeddings for each sequence directly
 def get_sequence_embedding(token_sequence, model):
@@ -384,13 +427,14 @@ def mainLogic():
     print(f"Origins_train.shape ->   {origins_train.shape}")
 
     # Train the tokenizer
-    kmeans_model, knn_model, tokens_train, n_clusters, best_silhouette, all_metrics = train_tokenizer(
+    kmeans_model, knn_model, tokens_from_kmeans, n_clusters, best_silhouette, all_metrics = train_tokenizer(
         segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"])
     best_silhouette = np.round(best_silhouette, 4)
 
     # Token assignment step — we train a classifier (k-NN) on the clustered segments
     # as suggested in Signal2Vec: token extraction (KMeans), token assignment (classifier)
-    tokens_train = knn_model.predict(segments_train)  # Optional: use classifier output
+    tokens_train = tokens_from_kmeans
+  #  tokens_train = knn_model.predict(segments_train)  # Optional: use classifier output
     tokens_val = knn_model.predict(segments_val)
     tokens_test = knn_model.predict(segments_test)
 
@@ -442,10 +486,10 @@ def mainLogic():
     print(f"Vocal size = n_clusters -> {vocab_size} = {n_clusters}")
     start_time = time.time()
     if loss == "NCE":
-        skipgram_model, skipgram_history = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)
+        skipgram_model, skipgram_history, epochEarlyStopped = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)
     else:
     # skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
-        skipgram_model, skipgram_history = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
+        skipgram_model, skipgram_history, epochEarlyStopped = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
     total_skipgram_time = time.time() - start_time
     print(f"Skip-gram model trained!\nTotal Skipgram time: {total_skipgram_time:.2f} seconds\n")
 
@@ -504,7 +548,7 @@ def mainLogic():
     }
 
     saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clusters_list, allDataShapes,
-                    allSegmenthapes, skipgram_history, total_skipgram_time, tokens_train, subfoldername, formatted_datetime, **name_kwargs)
+                    allSegmenthapes, skipgram_history, total_skipgram_time, epochEarlyStopped, tokens_train, subfoldername, formatted_datetime, **name_kwargs)
 
  #   plot_umap_of_segments(train_embeddings, labels_train_seq)
     setType = "NO"
@@ -570,14 +614,14 @@ config = {
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
  #   "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
-    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
+    "n_clusters_list": [6, 8],#, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
   #  "n_clusters_list": [2000, 3000, 5000, 10000],
     "knn_neighbors": 5,        # Number of neighbors for k-NN - 50
-    "window_size": 1024,    # 2       # Window size for sequence generation - 10
-    "stride": 512,          # 8      # Stride for sequence generation - 1
+    "window_size": 10024,    # 2       # Window size for sequence generation - 10
+    "stride": 5012,          # 8      # Stride for sequence generation - 1
     "embedding_dim": 200,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
-    "epochs": 10,                # Number of training epochs
+    "epochs": 100,                # Number of training epochs
     "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper
     "skipgram_loss": "NCE", # "sparse_categorical_crossentropy", "NCE
     "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"
@@ -588,7 +632,10 @@ config = {
     "output_folder": "02_Embeddings",  # Folder for saving embeddings
     "enable_scaling": True,
     "scaler": MinMaxScaler,  # MinMaxScaler(), StandardScaler(), "noScaling"
-    "rowWiseScaling": True
+    "rowWiseScaling": True,
+    "early_stopping": True,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 1e-4
 }
 # e.g. paper -> embedding dim = 300, window size = 6, etc
 

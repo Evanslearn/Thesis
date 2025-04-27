@@ -70,6 +70,10 @@
 * code cleanup for 01, 02, 03 03, 
     * Moved all write file logic to utils, added extra clustering evaluation metrics for kMeans (still optimize with silhouette)
     * logic for shuffling labels to challenge robustness of modal, plot for class labels distirbution per set, more clustering metrics in 02
+# 2025/04/27
+* Code cleanup + refactorings
+    * small fixes here and there, rms clipping supported for all methods in 01, early stopping for SG, tokens_train in 02 from kMeans (used to be kNN also for train, while should have been only val and test)
+    * Added cosine similarity calculation in 03
 
 # TO DO
 * Experiment with sampling of the mp3 files?

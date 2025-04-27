@@ -218,6 +218,11 @@ common_part = "scalerStandard_sil0.6895_nCl6_nN15_wSize64_str2048_wSizeSG6_SGLos
 common_part = "scalerMinMax_sil0.4427_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-22_19-52-30"
 common_part = 'scalerMinMax_sil0.4472_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-24_02-41-33'
 common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd300_2025-04-24_21-48-39"
+common_part = "scalerMinMax_sil0.4367_nCl6_nN5_wSize1024_str512_wSizeSG6_SGLossNCE_nEmbd200_2025-04-26_16-35-37"
+#common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-25_23-41-00"
+#common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd200_2025-04-26_02-55-48"
+common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd300_2025-04-24_21-48-39"
+common_part = "scalerMinMax_sil0.4367_nCl6_nN5_wSize1024_str512_wSizeSG6_SGLossNCE_nEmbd200_2025-04-27_21-31-35"
 
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names

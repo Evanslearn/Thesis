@@ -27,7 +27,6 @@ from keras.regularizers import l2
 
 tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 
-from imblearn.over_sampling import SMOTE, RandomOverSampler
 ### SciKit-Learn Imports ###
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -41,10 +40,11 @@ from utils00 import (
     doTrainValTestSplit,
     makeLabelsInt, readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
     trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
-    returnL2Distance, print_data_info, save_data_to_csv03, saveTrainingMetricsToFile03, printLabelCounts
+    returnL2Distance, print_data_info, save_data_to_csv03, saveTrainingMetricsToFile03, printLabelCounts,
+    cosine_similarity_between_means, cosine_similarity_all_pairs, compute_distances_and_plot
 )
 from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution, \
-    calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix, plotClassBarPlots
+    calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix, plotClassBarPlots, plot_cosine_similarity_histogram
 
 
 def custom_formatter(x):
@@ -66,7 +66,7 @@ def calculate_class_ratios(labels_list, names_list):
         ratio1All = count_1 / (count_0 + count_1)
         print(f"{name}, Y_0/Y_1 = {ratio:.4f}")
         print(f"{name}, Y_0/All = {100*ratio0All:.2f}%")
-        print(f"{name}, Y_1/All = {100*ratio1All:.2f}%")
+        print(f"{name}, Y_1/All = {100*ratio1All:.2f}%\n")
         ratios.append(ratio)
     return ratios
 
@@ -339,7 +339,7 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
         clf.fit(X_train, Y_train)
         evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test)
 
-def model03_VangRNN(data, labels, needSplitting, config):
+def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     # Extract hyperparameters
     batch_size, epochs = config["batch_size"], config["epochs"]
     loss, metrics = config["loss"], config["metrics"]
@@ -386,7 +386,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
     # save data to a CSV
     subfolderName = "03_ClassificationResults"
     suffix = f"Splitting_{needSplitting}"
-
     # Save training, validation, and test data using the helper function
     for dataset, label in zip([X_train, X_val, X_test], ["train", "val", "test"]):
         save_data_to_csv03(dataset, eval(f"Y_{label}"), subfolderName, suffix, label)
@@ -427,46 +426,40 @@ def model03_VangRNN(data, labels, needSplitting, config):
         return Y_train, Y_val, Y_test
 #    Y_train, Y_val, Y_test = shuffleLabelsRandomly(Y_train, Y_val, Y_test)
 
+    description = "NOT NORMALIZED"
+    print(f" ----- {description} -----")
+    L2distance_Means_All, CosineSimilarity_Means_All, CosineSimilarity_AvgByClass_All, all_cosine_scores = (
+        compute_distances_and_plot(X_train, X_val, X_test, Y_train, Y_val, Y_test, description=description))
+    plot_cosine_similarity_histogram(all_cosine_scores, description)
 
-    print(" ----- CLASSICAL MODELS -----")
-    print(" ----- NOT NORMALIZED -----")
-    L2distance_Train = returnL2Distance(X_train, Y_train)
-    L2distance_Val = returnL2Distance(X_val, Y_val)
-    L2distance_Test = returnL2Distance(X_test, Y_test)
-    L2distance_All = {
-        "L2distance_Train": L2distance_Train,
-        "L2distance_Val": L2distance_Val,
-        "L2distance_Test": L2distance_Test
+    description = "NORMALIZED"
+    print(f" ----- {description} -----")
+    L2distance_Means_All, CosineSimilarity_Means_All, CosineSimilarity_AvgByClass_All, all_cosine_scores = (
+        compute_distances_and_plot(X_train_normalized, X_val_normalized, X_test_normalized, Y_train, Y_val, Y_test, description=description))
+    cosineMetrics = {
+        "L2distance_Means_All": L2distance_Means_All,
+        "CosineSimilarity_Means_All": CosineSimilarity_Means_All,
+        "CosineSimilarity_AvgByClass_All": CosineSimilarity_AvgByClass_All,
+        "all_cosine_scores": all_cosine_scores
     }
-    print(L2distance_All)
-    train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state)
-  #  classifyWithSimpleModels(X_train, X_val, X_test)
 
-    print(" ----- NORMALIZED ----- ")
-    L2distance_Train = returnL2Distance(X_train_normalized, Y_train)
-    L2distance_Val = returnL2Distance(X_val_normalized, Y_val)
-    L2distance_Test = returnL2Distance(X_test_normalized, Y_test)
-    L2distance_All = {
-        "L2distance_Train": L2distance_Train,
-        "L2distance_Val": L2distance_Val,
-        "L2distance_Test": L2distance_Test
-    }
-    print(L2distance_All)
-    train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state)
-  #  classifyWithSimpleModels(X_train_normalized, X_val_normalized, X_test_normalized)
- #   sys.exit()
-   # return
+    if is_first_run:
+        print(" ----- CLASSICAL MODELS -----\n")
+        print(" ----- NOT NORMALIZED -----")
+        print(" ----- NORMALIZED ----- ")
+        train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state)
+        train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state)
 
-    methods = [PCA, TSNE, umap.UMAP]
-    labels = ["PCA", "t-SNE", "UMAP"]
-    datasets = [
-        (X_train, "on Raw Signal2Vec Embeddings"),
-        (X_train_normalized, "on Normalized Signal2Vec Embeddings")
-    ]
-    for method, label in zip(methods, labels):
-        for X_data, suffix in datasets:
-            print(f"\n🖼️ Plotting {label} {suffix}")
-     #       plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
+        methods = [PCA, TSNE, umap.UMAP]
+        labels = ["PCA", "t-SNE", "UMAP"]
+        datasets = [
+            (X_train, "on Raw Signal2Vec Embeddings"),
+            (X_train_normalized, "on Normalized Signal2Vec Embeddings")
+        ]
+        for method, label in zip(methods, labels):
+            for X_data, suffix in datasets:
+                print(f"\n🖼️ Plotting {label} {suffix}")
+         #       plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
     # Only expand dims for RNNs
@@ -509,7 +502,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
 
     start_time = time.perf_counter() # Get current time at start
 
-  #  learning_rate = 0.007 #0.035 Pitt for ncl=5???
     if optimizer_class == SGD:
         optimizer = optimizer_class(learning_rate=learning_rate, momentum=momentum)
     else:
@@ -549,8 +541,6 @@ def model03_VangRNN(data, labels, needSplitting, config):
         print(f'Y_predictions[i]     = {predictions[i]}')
         print(f'Y_test_normalized[i] = {Y_test[i]}')
 
-    mae = np.mean(np.abs(Y_test - predictions))
-    mse = np.mean(np.square(Y_test - predictions))
     loss_evaluate = model.evaluate(X_test_normalized, Y_test)
 
     # Extract metric names properly
@@ -574,18 +564,20 @@ def model03_VangRNN(data, labels, needSplitting, config):
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
     saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
-                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm)
+                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
     plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)
 
 
 split_options = CONFIG['split_options'] # Define as a variable
 for needSplitting in split_options:
-    for lr in learning_rate:
+    for idx, lr in enumerate(learning_rate):
         lr = np.round(lr, 8)
 
         config = CONFIG.copy()
         config["learning_rate"] = lr
 
         print(f"needSplitting={needSplitting}")
-        modelVangRNN = model03_VangRNN(data, labels, needSplitting=needSplitting, config=config)
+
+        is_first_run = idx == 0
+        modelVangRNN = model03_VangRNN(data, labels, needSplitting=needSplitting, config=config, is_first_run=is_first_run)

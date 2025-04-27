@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 from pandas._testing import iloc
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 
 
@@ -179,6 +180,80 @@ def returnL2Distance(data, labels):
     print(f"L2 distance between class 0 and 1 mean vectors: {dist:.4f}")
     return dist
 
+def cosine_similarity_between_means(data, labels):
+    mean_0 = data[labels == 0].mean(axis=0).reshape(1, -1)
+    mean_1 = data[labels == 1].mean(axis=0).reshape(1, -1)
+
+    cosine_sim = cosine_similarity(mean_0, mean_1)[0][0]
+    print(f"Cosine similarity between class 0 and 1 mean vectors: {cosine_sim:.4f}")
+    return cosine_sim
+
+def cosine_similarity_all_pairs(X, y):
+    # Split into class 0 and class 1
+    X0 = X[y == 0]
+    X1 = X[y == 1]
+
+    # Compute pairwise cosine similarity (every 0 vs every 1)
+    cos_sims = cosine_similarity(X0, X1)  # Shape = (num_class0, num_class1)
+
+    # Flatten to a single list of scores
+    cos_sims_flat = cos_sims.flatten()
+
+    print(f"Mean cosine similarity across all pairs: {np.mean(cos_sims_flat):.4f}")
+    print(f"Median cosine similarity: {np.median(cos_sims_flat):.4f}")
+    return cos_sims_flat
+
+def average_cosine_similarity_by_class(X, y):
+    sim_matrix = cosine_similarity(X)
+
+    n = len(y)
+    same_class = []
+    diff_class = []
+
+    for i in range(n):
+        for j in range(i + 1, n):  # No need to check twice (i,j) == (j,i)
+            if y[i] == y[j]:
+                same_class.append(sim_matrix[i, j])
+            else:
+                diff_class.append(sim_matrix[i, j])
+
+    same_avg = np.mean(same_class)
+    diff_avg = np.mean(diff_class)
+
+    print(f"🟢 Average SAME-class cosine similarity: {same_avg:.4f}")
+    print(f"🔴 Average DIFFERENT-class cosine similarity: {diff_avg:.4f}")
+
+    return same_avg, diff_avg
+
+def compute_distances_and_plot(X_train, X_val, X_test, Y_train, Y_val, Y_test, description=""):
+    # Distances
+    L2distance_All = {
+        "L2distance_Train": returnL2Distance(X_train, Y_train),
+        "L2distance_Val": returnL2Distance(X_val, Y_val),
+        "L2distance_Test": returnL2Distance(X_test, Y_test)
+    }
+    CosineSimilarity_All = {
+        "cosineSimilarity_means_Train": cosine_similarity_between_means(X_train, Y_train),
+        "cosineSimilarity_means_Val": cosine_similarity_between_means(X_val, Y_val),
+        "cosineSimilarity_means_Test": cosine_similarity_between_means(X_test, Y_test)
+    }
+    CosineSimilarity_AvgByClass_All = {
+        "cosineSimilarity_avgByClass_Train": average_cosine_similarity_by_class(X_train, Y_train),
+        "cosineSimilarity_avgByClass_Val": average_cosine_similarity_by_class(X_val, Y_val),
+        "cosineSimilarity_avgByClass_Test": average_cosine_similarity_by_class(X_test, Y_test)
+    }
+
+    print(f" ----- {description} ----- ")
+    print(L2distance_All)
+    print(CosineSimilarity_All)
+    print(CosineSimilarity_AvgByClass_All)
+
+    # Plot cosine similarity between individual vectors (only training set here)
+    all_cosine_scores = cosine_similarity_all_pairs(X_train, Y_train)
+
+    return L2distance_All, CosineSimilarity_All, CosineSimilarity_AvgByClass_All, all_cosine_scores
+
+
 def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     # Extract the part after "Embeddings_" and remove the extension
     filename = os.path.basename(filepath_data)  # Get the base filename
@@ -205,7 +280,7 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def write_csv01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="output", use_pandas=True, verbose=True):
+def write_csv01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="data", use_pandas=True, verbose=True):
     if formatted_datetime is None:
         formatted_datetime = returnFormattedDateTimeNow()
 
@@ -266,7 +341,7 @@ def SaveEmbeddingsToOutput02(filepath_data, embeddings, labels, subfolderName, f
 
     return
 def saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clusters_list, allDataShapes, allSegmenthapes,
-                    skipgram_history, total_skipgram_time, tokens_train, subfolderName, formatted_datetime, setType="NO", **kwargs):
+                    skipgram_history, total_skipgram_time, epochEarlyStopped, tokens_train, subfolderName, formatted_datetime, setType="NO", **kwargs):
     case_type = "Pitt" if "Pitt" in filepath_data else "Lu"
     case_type_str = f"{case_type}_{setType}" if setType != "NO" else f"_{case_type}_"
 
@@ -316,6 +391,7 @@ def saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clu
         df_history.to_csv(f, index=False)
 
         f.write(f"Total Skipgram time: {total_skipgram_time:.2f} seconds\n")
+        f.write(f"Epoch early stopped: {epochEarlyStopped}\n")
 
         returnDistribution(tokens_train, "Token", file=f)
 
@@ -336,7 +412,7 @@ def save_data_to_csv03(data, labels, subfolderName, suffix, data_type):
     labels_df.to_csv(labels_filepath, index=False, header=False)
 
 def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
-                              filepath_data, fileNameParams, ratio_0_to_1_ALL, L2distance_All, cm_raw, cm_norm):
+                              filepath_data, fileNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm):
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
 
     # Convert history.history (dictionary) to DataFrame
@@ -355,8 +431,18 @@ def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer
         f.write("Training History:\n")
         df_history.to_csv(f, index=False)
 
-        f.write("\n\nL2 distances all")
-        json.dump(L2distance_All, f, indent=4)
+        f.write("\n\nL2distance_Means_All")
+        json.dump(cosineMetrics["L2distance_Means_All"], f, indent=4)
+
+        f.write("\n\nCosineSimilarity_Means_All")
+        json.dump(cosineMetrics["CosineSimilarity_Means_All"], f, indent=4)
+
+        f.write("\n\nCosineSimilarity_AvgByClass_All")
+        json.dump(cosineMetrics["CosineSimilarity_AvgByClass_All"], f, indent=4)
+
+        f.write("\n\nall_cosine_scores")
+        all_cosine_scores = pd.DataFrame(cosineMetrics["all_cosine_scores"]).transpose()
+        all_cosine_scores.to_csv(f, index=False)
 
         f.write("\nRatio of 0s/1s Train-Val-Test:\n")
         for i in range(0,len(ratio_0_to_1_ALL)):

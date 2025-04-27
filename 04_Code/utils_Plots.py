@@ -157,18 +157,21 @@ def plot_clustering_metrics(metrics_dict, filenamePrefix, filepath_data, subfold
 
     plt.subplot(3, 1, 1)
     plt.plot(clusters, metrics_dict["silhouette"], marker='o')
-    plt.title("Silhouette Score")
-    plt.xlabel("n_clusters")
+    plt.title("Silhouette Score vs Number of Clusters")
+    plt.xlabel("Number of Clusters")
+    plt.ylabel("Silhouette Score")
 
     plt.subplot(3, 1, 2)
     plt.plot(clusters, metrics_dict["ch_index"], marker='o')
-    plt.title("Calinski-Harabasz Index")
-    plt.xlabel("n_clusters")
+    plt.title("Calinski-Harabasz Index vs Number of Clusters")
+    plt.xlabel("Number of Clusters")
+    plt.ylabel("Calinski-Harabasz Index")
 
     plt.subplot(3, 1, 3)
     plt.plot(clusters, metrics_dict["db_index"], marker='o')
-    plt.title("Davies-Bouldin Index (lower is better)")
-    plt.xlabel("n_clusters")
+    plt.title("Davies-Bouldin Index vs Number of Clusters")
+    plt.xlabel("Number of Clusters")
+    plt.ylabel("Davies-Bouldin Index")
 
     plt.tight_layout()
   #  plt.show()
@@ -302,6 +305,16 @@ def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title,
 #    plt.show()
     print(f" ----- Finished algorithm - {algorithm} -----")
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
+
+# ----- 03 -----
+def plot_cosine_similarity_histogram(cosine_scores, description=""):
+    plt.figure(figsize=(8, 6))
+    plt.hist(cosine_scores, bins=50, alpha=0.7, edgecolor='black')
+    plt.title(f'Cosine similarity between individual vectors ({description})')
+    plt.xlabel('Cosine similarity')
+    plt.ylabel('Frequency')
+    plt.grid(True)
+    plt.show()
 
 # ----- 03 -----
 def plotClassBarPlots(Y_train, Y_val, Y_test):

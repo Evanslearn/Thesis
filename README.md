@@ -74,6 +74,8 @@
 * Code cleanup + refactorings
     * small fixes here and there, rms clipping supported for all methods in 01, early stopping for SG, tokens_train in 02 from kMeans (used to be kNN also for train, while should have been only val and test)
     * Added cosine similarity calculation in 03
+# 2025/05/03
+* 01 improve MFCC logic to allow more components and also allow splitting an mp3 into chunks and doing mfcc in each chunk, 02 plots to check embedding quality also early stopping plot lines
 
 # TO DO
 * Experiment with sampling of the mp3 files?

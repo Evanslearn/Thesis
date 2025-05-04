@@ -8,6 +8,7 @@ import pandas as pd
 from keras import Model
 from keras.callbacks import EarlyStopping
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 from sklearn.neighbors import KNeighborsClassifier
@@ -33,7 +34,7 @@ from utils_Plots import (
     plot_token_waveforms,
     plot_token_spectrograms,
     plot_umap_of_segments,
-    plot_tsne_of_segments, plot_clustering_metrics
+    plot_tsne_of_segments, plot_clustering_metrics, analyze_all_embedding_plots, plotSkipgramLossVsEpoch
 )
 
 
@@ -556,56 +557,66 @@ def mainLogic():
     filenamePrefix_metricsVsNCL = "MetricsVsNCL"
     filenamePrefix_TokensDistr = "TokensDistribution"
     filenamePrefix_TSNE = "TSNE"
+    filenamePrefix_PCA = "PCA"
     filenamePrefix_UMAP = "UMAP"
     top_n = 20
 
     plotSilhouetteVsNClusters(n_clusters_list, all_metrics['silhouette'], filenamePrefix_SilVsNCL, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
     plot_clustering_metrics(all_metrics, filenamePrefix_metricsVsNCL, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
-    plot_token_distribution_Bar(tokens_train, top_n, filenamePrefix_TokensDistr, filepath_data, subfoldername, formatted_datetime, setType, **name_kwargs)
+    plot_token_distribution_Bar(tokens_train, top_n, filenamePrefix_TokensDistr, filepath_data, subfoldername, formatted_datetime, setType, percent=True, **name_kwargs)
     #  plot_tsnePCAUMAP(TSNE, np.array(segments_train), labels_segments_train, config["perplexity"], config["random_state"], "of data_train", "no")
-    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters",
+    plot_tsnePCAUMAP(TSNE, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"of Segments Colored by KMeans Clusters (n={n_clusters})",
                      filenamePrefix_TSNE, filepath_data, subfoldername, formatted_datetime, setType,
-                     config["random_state"], "no", **name_kwargs)
-    plot_tsnePCAUMAP(UMAP, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"with {n_clusters} Clusters",
+                     kmeans_model, config["random_state"], "no", **name_kwargs)
+    plot_tsnePCAUMAP(PCA, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"of Segments Colored by KMeans Clusters (n={n_clusters})",
+                     filenamePrefix_PCA, filepath_data, subfoldername, formatted_datetime, setType,
+                     kmeans_model, config["random_state"], "no", **name_kwargs)
+    plot_tsnePCAUMAP(UMAP, segments_train, kmeans_model.fit_predict(segments_train), config["perplexity"], f"of Segments Colored by KMeans Clusters (n={n_clusters})",
                      filenamePrefix_UMAP, filepath_data, subfoldername, formatted_datetime, setType,
-                     config["random_state"], "no", **name_kwargs)
+                     kmeans_model, config["random_state"], "no", **name_kwargs)
+
+    filenamePrefix_SGLossvsEpoch = "SGLossvsEpoch"
+    epochBestWeights = epochEarlyStopped - config['early_stopping_patience']
+    plotSkipgramLossVsEpoch(skipgram_history, filenamePrefix_SGLossvsEpoch, filepath_data, subfoldername, formatted_datetime,
+                            setType="NO", epochEarlyStopped=epochEarlyStopped, epochBestWeights=epochBestWeights, **name_kwargs)
+
+    PlothelpDict = {
+        "filepath_data": filepath_data,
+        "subfoldername": subfoldername,
+        "formatted_datetime": formatted_datetime,
+        "setType": setType,
+        "name_kwargs": name_kwargs
+    }
+
+    dataType = "initialData"
+    analyze_all_embedding_plots(data_train, data_val, data_test, dataType, save=True, **PlothelpDict)
+    dataType = "Embeddings"
+    analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embeddings, dataType, save=True, **PlothelpDict)
 
 
-filepath_data = "Lu_sR50_2025-01-06_01-40-21_output (Copy).csv"
-filepath_data = "Pitt_sR11025.0_2025-01-20_23-11-13_output.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.0_2025-03-25_17-18-31.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-26_01-39-56.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_01-16-49.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-39-38.csv"
-filepath_data = "Pitt_output_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_22-39-34.csv"
-filepath_data = "Pitt_output_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
-filepath_data = "Pitt_output_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18-21-08.csv"
-filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
-filepath_data = "Pitt_output_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
-filepath_data = "Pitt_output_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
 filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
 filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
 #filepath_data = "Pitt_output_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv" # crashed
 #filepath_data = "Pitt_output_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
-
-filepath_labels = "Lu_sR50_2025-01-06_01-40-21_output.csv"
-filepath_labels = "Pitt_sR11025.0_2025-01-20_23-12-07_labels.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-02-22_14-49-06.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.0_2025-03-25_17-18-31.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-26_01-39-56.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_01-16-49.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-03-27_22-39-38.csv"
-filepath_labels = "Pitt_labels_sR11025_frameL2048_hopL512_thresh0.02_2025-04-01_22-39-34.csv"
-filepath_labels = "Pitt_labels_sR1100_frameL2048_hopL512_thresh0.02_2025-04-01_22-54-29.csv"
-filepath_labels = "Pitt_labels_sR300_frameL2048_hopL512_thresh0.02_2025-04-02_18-21-08.csv"
-filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
-filepath_labels = "Pitt_labels_raw_sR100_frameL2048_2025-04-19_22-01-54.csv"
-filepath_labels = "Pitt_labels_raw_sR300_frameL2048_2025-04-20_21-44-41.csv"
+filepath_data = "Pitt_data_mfcc_sR22050_hopL512_nFFT2048_2025-04-28_02-36-51.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL512mfcc_summary_nFFT2048_2025-05-02_23-12-46.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-03_00-08-48.csv"
 filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
 filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
 #filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv"
-#filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
+filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
+filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_nFFT2048_2025-04-28_02-36-51.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512mfcc_summary_nFFT2048_2025-05-02_23-12-46.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-03_00-08-48.csv"
+
+filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
+filepath_labels= "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {
@@ -614,14 +625,14 @@ config = {
   #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
  #   "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
-    "n_clusters_list": [6, 8],#, 16, 32, 64, 128, 160, 192, 300], #350, 500, 700, 1000, 1500, 3000],
-  #  "n_clusters_list": [2000, 3000, 5000, 10000],
-    "knn_neighbors": 5,        # Number of neighbors for k-NN - 50
-    "window_size": 10024,    # 2       # Window size for sequence generation - 10
-    "stride": 5012,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 200,       # Dimension of word embeddings - 300
+#    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 256, 300, 350, 500, 700, 1000, 1500, 3000],
+    "n_clusters_list": [6, 8, 16, 24, 32, 64, 128, 256],
+    "knn_neighbors": 4,        # Number of neighbors for k-NN - 50
+    "window_size": 36,    # 2       # Window size for sequence generation - 10
+    "stride": 9,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 5,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
-    "epochs": 100,                # Number of training epochs
+    "epochs": 50,                # Number of training epochs
     "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper
     "skipgram_loss": "NCE", # "sparse_categorical_crossentropy", "NCE
     "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"
@@ -631,7 +642,7 @@ config = {
     "n_init": 50, #default 10 in kmeans. use 50 to help avoid collapse
     "output_folder": "02_Embeddings",  # Folder for saving embeddings
     "enable_scaling": True,
-    "scaler": MinMaxScaler,  # MinMaxScaler(), StandardScaler(), "noScaling"
+    "scaler": StandardScaler,  # MinMaxScaler(), StandardScaler(), "noScaling"
     "rowWiseScaling": True,
     "early_stopping": True,
     "early_stopping_patience": 3,

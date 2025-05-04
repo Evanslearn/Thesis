@@ -372,13 +372,11 @@ def saveResultsFile02(config, filepath_data, filepath_labels, all_metrics, n_clu
         f.write("\nallSegmenthapes:")
         json.dump(allSegmenthapes, f, indent=4)
 
-        for key, value in all_metrics.items():
-            f.write(f"{key}: {value}\n")
-      #  f.write("\nClusters --- Training Time --- Silhouette Scores:\n")
-      #  for i in range(0, len(all_Silhouettes)):
-      #     f.write(f"{n_clusters_list[i]} --- {all_KMeans_times[i]:.6f}--- {all_Silhouettes[i]:.6f} \n")
+        f.write('\n')
+    #    for key, value in all_metrics.items():
+    #        f.write(f"{key}: {value:.2f}\n")
         df_metrics = pd.DataFrame(all_metrics) # Convert to DataFrame
-        df_metrics.to_csv(f, index=False) # Save to CSV
+        df_metrics.to_csv(f, index=False, float_format="%.2f") # Save to CSV
 
         config_serializable = config.copy()
         config_serializable["optimizer_skipgram"] = str(config["optimizer_skipgram"])  # Convert optimizer to string

@@ -21,7 +21,7 @@ def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
 
     return data, sr
 
-def analyze_audio(file_path, target_sr=44100):
+def analyze_audio(file_path, threshold, target_sr=44100):
     # Load audio (converts to mono by default)
     y, sr = librosa.load(file_path, sr=target_sr)
 
@@ -33,9 +33,8 @@ def analyze_audio(file_path, target_sr=44100):
     freqs = np.fft.rfftfreq(len(y), 1 / sr)
 
     # Threshold to ignore noise (e.g., 1% of max)
-    threshold = 0.01 * np.max(fft)
-    threshold = 0.00
-    max_freq = freqs[fft > threshold].max() if any(fft > threshold) else 0
+    thresholdFFT = threshold * np.max(fft)
+    max_freq = freqs[fft > thresholdFFT].max() if any(fft > thresholdFFT) else 0
 
     return sr, duration, max_freq
 
@@ -110,25 +109,92 @@ def returnRMSClippedSignal(signalToClip, frame_length, hop_length, threshold=0.0
             raise ValueError("No valid frames after RMS filtering.")
         return frames[:, valid_mask].flatten()  # Flatten back
 
-def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_rms_clipping=False, threshold=0.00, resample=False, target_length=40):
+def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_rms_clipping=False, threshold=0.00, summary=False, use_mfcc_deltas = False, resample=False, resample_length=40):
     # Step 1: Compute MFCC
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length, n_fft=frame_length)
 
     if apply_rms_clipping:
         mfcc = returnRMSClippedSignal(mfcc, frame_length, hop_length, threshold, is_mfcc=True, originalAudio=audio)
 
-    if resample:
-        # Resample each MFCC to target length
-        mfcc = np.array([
-            np.interp(np.linspace(0, 1, target_length),
-                      np.linspace(0, 1, mfcc.shape[1]),
-                      mfcc[i]) for i in range(n_mfcc)
-        ])
+    if summary:
+        mfcc_mean = np.mean(mfcc, axis=1)
+        mfcc_std = np.std(mfcc, axis=1)
 
-    # Flatten to 1D feature vector
-    return mfcc.flatten()
-    # TO DO - COULD TRY THIS, TO BETTER PRESERVE MEANING (FLATTETING NOT THAT MEANINGFUL)
-    #return mfcc_final.T  # Each row = 1 time step
+        if use_mfcc_deltas and mfcc.shape[1] >= 5:
+            delta = librosa.feature.delta(mfcc)
+            delta2 = librosa.feature.delta(mfcc, order=2)
+
+            delta_mean = np.mean(delta, axis=1)
+            delta_std = np.std(delta, axis=1)
+
+            delta2_mean = np.mean(delta2, axis=1)
+            delta2_std = np.std(delta2, axis=1)
+
+            return np.concatenate([
+                mfcc_mean, mfcc_std,
+                delta_mean, delta_std,
+                delta2_mean, delta2_std
+            ])
+        else:
+            return np.concatenate([mfcc_mean, mfcc_std])  # shape: (26,) for n_mfcc=13
+    else:
+        # Flatten full sequence
+        if resample:
+            # Resample each MFCC to fixed time length
+            mfcc = np.array([
+                np.interp(np.linspace(0, 1, resample_length),
+                          np.linspace(0, 1, mfcc.shape[1]),
+                          mfcc[i]) for i in range(n_mfcc)
+            ])
+        return mfcc.flatten()
+
+def segment_audio_and_extract_mfccs(audio, sr, window_sec=2.0, hop_sec=1.0, config=None):
+    assert config is not None, "You must provide the global config."
+
+    window_length = int(window_sec * sr)
+    hop_length = int(hop_sec * sr)
+    segments = []
+
+    for start in range(0, len(audio) - window_length + 1, hop_length):
+        segment = audio[start:start + window_length]
+        try:
+            mfcc_flat = extract_mfcc_timeseries(
+                segment, sr,
+                n_mfcc=config["n_mfcc"],
+                frame_length=config["frame_length"],
+                hop_length=config["hop_length"],
+                apply_rms_clipping=config["apply_rms_clipping_mfcc"],
+                threshold=config["threshold"],
+                summary=config["mfcc_summary"],
+                use_mfcc_deltas=config["use_mfcc_deltas"],
+                resample=config["resampleTimeseries"],
+                resample_length=config["resample_length"]
+            )
+            segments.append(mfcc_flat)
+        except Exception as e:
+            print(f"⚠️ Skipping segment due to error: {e}")
+            continue
+
+    return segments
+
+def segment_and_extract_mfcc_means(audio, sr, config, window_sec=2.0, hop_sec=1.0):
+    window_length = int(window_sec * sr)
+    hop_length = int(hop_sec * sr)
+    n_mfcc = config["n_mfcc"]
+    features = []
+
+    for start in range(0, len(audio) - window_length + 1, hop_length):
+        segment = audio[start:start + window_length]
+
+        # Compute MFCC
+        mfcc = librosa.feature.mfcc(y=segment, sr=sr, n_mfcc=n_mfcc, hop_length=config["hop_length"], n_fft=config["frame_length"])
+
+        # Mean over time axis (shape: [n_mfcc])
+        mfcc_mean = np.mean(mfcc, axis=1)
+        features.append(mfcc_mean)
+
+    return np.concatenate(features)  # shape = (n_segments × n_mfcc,)
+
 
 
 def extract_audio_features(audio, sr, n_mfcc=13, frame_length=2048, hop_length=512, verbose=False):
@@ -202,14 +268,17 @@ def logicForPitt(file_path_caseName = "Pitt"):
     stats_duration = plot_colName_distributions(df_metadata, colName="duration", title="Duration Distributions by Label")
     stats_sampleRate = plot_colName_distributions(df_metadata, colName="sample_rate", title="Sample Rate Distributions by Label")
 
-    sample_rate, frame_length, hop_length, threshold, apply_rms_clipping_global, apply_rms_clipping_mfcc = (
+    sample_rate, frame_length, hop_length, threshold, apply_rms_clipping_global, apply_rms_clipping_mfcc, mfcc_summary, use_mfcc_deltas = (
         config["sample_rate"],
         config["frame_length"],
         config["hop_length"],
         config["threshold"],
         config["apply_rms_clipping_global"],
-        config["apply_rms_clipping_mfcc"]
+        config["apply_rms_clipping_mfcc"],
+        config["mfcc_summary"],
+        config["use_mfcc_deltas"]
     )
+    n_mfcc = config['n_mfcc'] # 13
 
     output_timeseries_ALL = []
     valid_files = []  # Track filenames that are kept
@@ -226,10 +295,11 @@ def logicForPitt(file_path_caseName = "Pitt"):
             audio, sr = loadMp3AndConvertToTimeseries(mp3_file, sample_rate=sample_rate)
 
             # Analyze frequency and duration at higher precision (optional: use a higher target_sr)
-            full_sr, duration, max_freq = analyze_audio(mp3_file, target_sr=None)
+            full_sr, duration, max_freq = analyze_audio(mp3_file, threshold, target_sr=None)
 
             feature_type = config["feature_type"]
             resample = config["resampleTimeseries"]
+            resample_length = config['resample_length']
 
             # Clip using RMS threshold
             if apply_rms_clipping_global:
@@ -238,15 +308,16 @@ def logicForPitt(file_path_caseName = "Pitt"):
             if feature_type == "raw":
                 features = audio  # raw waveform
             elif feature_type == "mfcc":
-                features = extract_mfcc_timeseries(audio, sr, n_mfcc=13, frame_length=frame_length, hop_length=hop_length, apply_rms_clipping=apply_rms_clipping_mfcc,
-                                                   resample=resample, target_length=40)
+   #             features = extract_mfcc_timeseries(audio, sr, n_mfcc=n_mfcc, frame_length=frame_length, hop_length=hop_length, apply_rms_clipping=apply_rms_clipping_mfcc, threshold=threshold,
+   #                                                summary=mfcc_summary, use_mfcc_deltas=use_mfcc_deltas, resample=resample, resample_length=resample_length)
+                features = segment_and_extract_mfcc_means(audio, sr, config, window_sec=2.0, hop_sec=1.0)
             elif feature_type == "audio_features":
                 features = extract_audio_features(audio, sr, frame_length=frame_length, hop_length=hop_length, verbose=False)
             else:
                 raise ValueError(f"Unknown feature type: {feature_type}")
 
             # Optional resampling (for raw or feature vectors)
-            if resample:
+            if resample and not mfcc_summary:
                 output_timeseries = scale_and_resample_timeseries(features)
             else:
                 output_timeseries = features  # keep original
@@ -294,13 +365,21 @@ def logicForPitt(file_path_caseName = "Pitt"):
         filenameVars += f"_thrMFCC{threshold}"
 
     # Only include if they are used in this feature type
-    if feature_type != "raw" or config["apply_rms_clipping"]:
+    if feature_type != "raw" or config["apply_rms_clipping_global"] or config["apply_rms_clipping_mfcc"]:
         filenameVars += f"_hopL{hop_length}"
+
+    if feature_type == "mfcc":
+        filenameVars += f"_mfcc_summary{mfcc_summary}"
+        filenameVars += f"_use_mfcc_deltas{use_mfcc_deltas}"
+        filenameVars += f"_nMFCC{n_mfcc}"
 
     if feature_type in ["mfcc", "audio_features"]:
         filenameVars += f"_nFFT{frame_length}"
     elif feature_type == "raw":
         filenameVars += f"_frameL{frame_length}"
+
+    if config['resampleTimeseries']:
+        filenameVars += f"_resample{config['resampleTimeseries']}"
 
     filenameVars += "_"
  #   printLabelCounts(valid_labels)
@@ -314,14 +393,18 @@ def logicForPitt(file_path_caseName = "Pitt"):
     returnDistribution(df_metadata['OriginalSR'], "Original SR")
 
 config = {
-    "sample_rate": 22050, #int(600 / 2), # None, int(22050 / 2)
+    "sample_rate": 44100,
     "frame_length": 2048,
     "hop_length": 512,
     "threshold": 0.00,
     "feature_type": "mfcc",  # Options: "raw", "mfcc", "audio_features"
     "resampleTimeseries": False,
+    "resample_length": 1024,
     "apply_rms_clipping_global": False,
     "apply_rms_clipping_mfcc": False,
+    "mfcc_summary": False,  # True for mean+std, False for flatten
+    "use_mfcc_deltas": True,  # Add Δ and ΔΔ features (summary only)
+    "n_mfcc": 13, #13
     "verbose": True
 }
 

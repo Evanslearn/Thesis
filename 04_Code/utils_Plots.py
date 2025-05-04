@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 import seaborn as sns
 import umap
 import umap.umap_ as umap
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 from scipy.stats import zscore
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -50,7 +52,14 @@ def plot_token_distribution_Histogram(data, name="Token", bins=30, title=None, s
             f"Mean: {stats['mean']:.2f} - Std: {stats['std']:.2f}\n"
             f"Min: {stats['min']:.2f} - Max: {stats['max']:.2f}"
         )
-        ax.legend([legend_text], loc="upper right", fontsize=18, frameon=True, framealpha=0.9)
+        ax.legend(
+            [legend_text],
+            loc="upper center",  # start from upper center
+            bbox_to_anchor=(0.75, 1),  # move slightly right
+            fontsize=18,
+            frameon=True,
+            framealpha=0.9
+        )
 
 # ----- 01 -----
 def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "C", "D"),
@@ -110,11 +119,11 @@ def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "
     percentile_99 = np.percentile(df_metadata[colName], 99)  # Calculate the percentile
     common_xlim = (0, df_metadata[colName].max())  # Normalize X-axis across plots
     for ax in axs:
-        #    ax.set_xlim([0, percentile_99]) # Set x-axis limit to 99th percentile
+    #    ax.set_xlim([0, percentile_99]) # Set x-axis limit to 99th percentile
         ax.set_xlim(common_xlim)
 
     plt.suptitle(title, fontsize=20, weight='bold')
-#    plt.show()
+    plt.show()
 
     return labelStats_Dict
 
@@ -147,7 +156,6 @@ def plotSilhouetteVsNClusters(n_clusters_list, all_Silhouettes, filenamePrefix, 
     plt.grid(True)
     plt.tight_layout()
   #  plt.show()
-
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
 # ----- 02 -----
@@ -247,24 +255,187 @@ def plot_umap_of_segments(segments, labels):
     plt.show()
 
 # ----- 02 -----
-def plot_token_distribution_Bar(tokens, top_n, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs):
+def plot_token_distribution_Bar(tokens, top_n, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, percent=False,  **kwargs):
     token_counts = Counter(tokens)
+    total_count = sum(token_counts.values())
     top = token_counts.most_common(top_n)
+
     labels, values = zip(*top)
 
-    fig, ax = plt.subplots()
-    ax.bar(labels, values)
+    if percent:
+        values = [v / total_count * 100 for v in values]
+        ylabel = r"Percent (%)"  # <- this fixes the issue
+        value_fmt = lambda v: f"{v:.1f}%"
+        legend_label = f"Total tokens: {total_count} (100%)"
+    else:
+        ylabel = "Count"
+        value_fmt = lambda v: str(int(v))
+        legend_label = f"Total tokens: {total_count}"
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bars = ax.bar(labels, values)
+
     ax.set_title("Top Token Frequencies")
     ax.set_xlabel("Token ID")
-    ax.set_ylabel("Count")
+    ax.set_ylabel(ylabel)
+
+    # Add value labels above bars
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            yval + max(values) * 0.01,  # small vertical offset
+            f"{yval:.1f}%" if percent else f"{int(yval)}",
+            ha='center', va='bottom', fontsize=9
+        )
+
+    # Add legend with total count/%
+    ax.legend([legend_label], loc='upper right')
+    plt.tight_layout()
   #  plt.show()
 
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
+
+def plotEarlyStopLines(epochEarlyStopped, epochBestWeights, loss_values, ax=None):
+    plot_func = ax if ax is not None else plt
+
+    if epochEarlyStopped is not None and epochEarlyStopped <= len(loss_values):
+        plot_func.axvline(x=epochEarlyStopped, color='red', linestyle='--', label=f"Early Stop  @ Epoch {epochEarlyStopped}")
+        plot_func.scatter(epochEarlyStopped, loss_values[epochEarlyStopped - 1], color='red', zorder=5)
+
+    if epochBestWeights is not None and epochBestWeights <= len(loss_values):
+        plot_func.axvline(x=epochBestWeights, color='green', linestyle='--', label=f"Checkpoint @ Epoch {epochBestWeights}")
+        plot_func.scatter(epochBestWeights, loss_values[epochBestWeights - 1], color='green', zorder=5)
+
+# ----- 02 -----
+def plotSkipgramLossVsEpoch(skipgram_history, filenamePrefix, filepath_data, subfoldername, formatted_datetime,
+                            setType="NO", epochEarlyStopped=None, epochBestWeights=None, **kwargs):
+    if isinstance(skipgram_history, dict):
+        df_history = pd.DataFrame(skipgram_history)
+    else:
+        df_history = pd.DataFrame(skipgram_history.history)
+    df_history.insert(0, "Epoch", range(1, len(df_history) + 1))  # Add epoch numbers
+    df_history = df_history.round(6)
+    loss_values = df_history['loss']
+
+    fig = plt.figure(figsize=(8, 5))
+    epochs = range(1, len(loss_values) + 1)
+
+    plt.plot(epochs, loss_values, marker='o', linestyle='-', label="Training Loss")
+    plt.title("Skip-Gram Loss vs Epoch")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.grid(True)
+
+    plotEarlyStopLines(epochEarlyStopped, epochBestWeights, loss_values)
+
+    plt.legend()
+    plt.tight_layout()
+
+    saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
+    plt.show()
+
+
+
+
+
+
+import os
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.spatial.distance import pdist
+
+def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embeddings, dataType, save=False, **PlothelpDict):
+    def save_fig(fig, filenamePrefix):
+        if save:
+            saveFigure02(fig, filenamePrefix, PlothelpDict['filepath_data'], PlothelpDict['subfoldername'], PlothelpDict['formatted_datetime'], PlothelpDict['setType'], **PlothelpDict['name_kwargs'])
+
+    sets = [("Train", train_embeddings), ("Validation", val_embeddings), ("Test", test_embeddings)]
+
+    # ---- PCA Explained Variance ----
+    fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+    for ax, (set_name, emb) in zip(axes, sets):
+        pca = PCA()
+        pca.fit(emb)
+        explained_var = np.cumsum(pca.explained_variance_ratio_)
+
+        n_dims = len(explained_var)
+        top_k = min(10, n_dims)
+        top10_var = np.sum(pca.explained_variance_ratio_[:top_k])
+        ax.set_title(f"{set_name} - PCA Variance ({top_k} dims ≈ {top10_var:.2%})")
+
+        ax.plot(np.arange(1, n_dims + 1), explained_var, marker='o')
+        ax.set_xscale('linear')
+        plt.xlabel("PCA Component")
+
+        ax.set_ylabel("Cumulative Explained Variance")
+        ax.grid(True)
+        print(f"📊 {set_name} - % Variance in first {top_k} PCA components: {top10_var:.4f}")
+
+        threshold = 0.90
+        dim_90 = np.where(explained_var >= threshold)[0][0] + 1  # +1 for 1-based index
+        var_at_90 = explained_var[dim_90 - 1]
+        ax.axvline(dim_90, linestyle='--', color='red', label=f"First ≥90%: PC {dim_90} ({var_at_90:.1%})")
+        ax.legend()
+
+    axes[-1].set_xlabel("Number of Components")
+    fig.suptitle("PCA Variance Across Sets", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    save_fig(fig, f"pca_variance{dataType}")
+    plt.show()
+
+    # ---- Cosine Similarity Heatmaps (3x1 or 1x3 layout, shared colorbar, fewer ticks) ----
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig.subplots_adjust(wspace=0.3, right=0.88)
+
+    cbar_ax = fig.add_axes([0.89, 0.25, 0.015, 0.5])  # better aligned with heatmaps
+    for idx, (ax, (set_name, emb)) in enumerate(zip(axes, sets)):
+        sim_matrix = cosine_similarity(emb)
+
+        # Limit number of ticks
+        n = sim_matrix.shape[0]
+        tick_step = max(n // 10, 1)
+        tick_positions = np.arange(0, n, tick_step)
+
+        sns.heatmap(sim_matrix, ax=ax, cmap='viridis', cbar=(idx == 0),  cbar_ax=(cbar_ax if idx == 0 else None),
+            square=True)
+
+        ax.set_title(f"{set_name} - Cosine Similarity")
+        ax.set_xticks(tick_positions)
+        ax.set_yticks(tick_positions)
+        ax.set_xticklabels(tick_positions, rotation=0)
+        ax.set_yticklabels(tick_positions, rotation=0)
+
+    fig.suptitle("Cosine Similarity Heatmaps Across Sets", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 0.9, 0.95])
+    save_fig(fig, f"cosine_similarity{dataType}")
+    plt.show()
+
+    # ---- Histogram of Pairwise Cosine Distances ----
+    fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+    for ax, (set_name, emb) in zip(axes, sets):
+        distances = pdist(emb, metric='cosine')
+        mean_d = np.mean(distances)
+        std_d = np.std(distances)
+        ax.hist(distances, bins=40, color='skyblue', edgecolor='black')
+        ax.set_title(f"{set_name} - Cosine Distance Histogram")
+        label = f"{set_name}\nμ={mean_d:.4f}\nσ={std_d:.4f}"
+        ax.hist(distances, bins=40, color='skyblue', edgecolor='black', label=label)
+        ax.legend()
+        ax.set_ylabel("Frequency")
+        ax.grid(True)
+        print(f"📏 {set_name} - Mean cosine distance: {mean_d:.4f}, Std: {std_d:.4f}")
+
+    axes[-1].set_xlabel("Cosine Distance")
+    fig.suptitle("Cosine Distance Histograms Across Sets", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    save_fig(fig,f"cosine_distance_hist{dataType}")
+    plt.show()
+
 # ----- 02 and 03 -----
 def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title,
                      filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType,
-                     random_state=42, remove_outliers=True, **kwargs):
+                     kmeans_model=None, random_state=42, remove_outliers=True, **kwargs):
 
     print(f"\n ----- Starting algorithm - {algorithm} -----")
   #  print("Variance of features:", np.var(data, axis=0))
@@ -285,23 +456,43 @@ def plot_tsnePCAUMAP(algorithm, data, labels, perplexity, title,
 
     """Applies algorithm and plots results."""
     if algorithm == TSNE:
-    #    pca = PCA(n_components=30, random_state=42)  # Reduce to 30 dimensions
-    #    X_pca = pca.fit_transform(data)
-
-        transformer_alg = TSNE(n_components=2, perplexity=perplexity, method='barnes_hut', max_iter=250, random_state=42)
-  #      transformer_alg = TSNE(n_components=2, perplexity=perplexity, random_state=random_state)
+        transformer = TSNE(n_components=2, perplexity=perplexity, method='barnes_hut', max_iter=250, random_state=random_state)
+        if kmeans_model is not None:
+            combined_data = np.vstack([data, kmeans_model.cluster_centers_])
+            transformed_all = transformer.fit_transform(combined_data)
+            transformed, centroids = transformed_all[:-kmeans_model.n_clusters], transformed_all[-kmeans_model.n_clusters:]
+        else:
+            transformed = transformer.fit_transform(data)
     elif algorithm == PCA:
-        transformer_alg = PCA(n_components=2, random_state=random_state)
+        transformer = PCA(n_components=2, random_state=random_state)
+        transformed = transformer.fit_transform(data)
+        if kmeans_model is not None:
+            centroids = transformer.transform(kmeans_model.cluster_centers_)
     elif algorithm == umap.UMAP:
-        transformer_alg = umap.UMAP(n_components=2, random_state=random_state)
+        transformer = umap.UMAP(n_components=2, random_state=random_state)
+        transformed = transformer.fit_transform(data)
+        if kmeans_model is not None:
+            centroids = transformer.transform(kmeans_model.cluster_centers_)
     else:
-        raise ValueError("Invalid algorithm! Use TSNE, PCA, or UMAP.")
-    transformed = transformer_alg.fit_transform(data)
+        raise ValueError("Invalid algorithm. Use TSNE, PCA, or UMAP.")
+
+    # Create legend labels with sample counts
+    counts = Counter(labels)
+    label_map = {k: f"{k} (n={v})" for k, v in counts.items()}
+    label_names = [label_map[l] for l in labels]
 
     fig = plt.figure(figsize=(8, 6))
-    sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=labels, palette="viridis", alpha=0.6)
+    sns.scatterplot(x=transformed[:, 0], y=transformed[:, 1], hue=label_names, palette="viridis", alpha=0.6,
+                    legend="full")
+
+    if centroids is not None:
+        plt.scatter(centroids[:, 0], centroids[:, 1], c='black', s=120, marker='X', label='Cluster\nCentroid')
+
     plt.title(f"{algorithm.__name__} Visualization " + title)
-    plt.xlabel(f"{algorithm.__name__} Component 1"); plt.ylabel(f"{algorithm.__name__} Component 2")
+    plt.xlabel(f"{algorithm.__name__} Component 1")
+    plt.ylabel(f"{algorithm.__name__} Component 2")
+    plt.legend(title="Cluster", fontsize='small', title_fontsize='medium', loc='best')
+    plt.grid(True, linestyle='--', alpha=0.3)
 #    plt.show()
     print(f" ----- Finished algorithm - {algorithm} -----")
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
@@ -351,7 +542,7 @@ def plotClassBarPlots(Y_train, Y_val, Y_test):
     plt.show()
 
 # ----- 03 -----
-def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression = "NO"):
+def plotTrainValMetrics(history, filepath_data, figureNameParams, epochEarlyStopped=None, epochBestWeights=None, flagRegression = "NO"):
     # Access metrics from the history
     training_accuracy = history.history['accuracy']
     validation_accuracy = history.history['val_accuracy']
@@ -367,6 +558,7 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
     ax_loss.set_title('Loss vs Epoch')
     ax_loss.set_xlabel('Epochs')
     ax_loss.set_ylabel('Loss')
+    plotEarlyStopLines(epochEarlyStopped, epochBestWeights, training_loss, ax_loss)
     ax_loss.legend()
     ax_loss.grid(True)
     fig_loss.tight_layout()
@@ -453,7 +645,25 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, flagRegression
         axes[1, 1].legend()
         axes[1, 1].grid(True)
 
-    # Adjust layout to prevent overlap
+    for i, ax in enumerate(axes.flatten()):
+  #      ax.legend(loc='upper right')
+        plotEarlyStopLines(epochEarlyStopped, epochBestWeights, training_loss, ax)
+
+    # Create custom legend handles
+    custom_lines = []
+    if epochEarlyStopped:
+        custom_lines.append(Line2D([0], [0], color='red', linestyle='--', label=f"Early Stop  @ Epoch {epochEarlyStopped}"))
+    if epochBestWeights:
+        custom_lines.append(Line2D([0], [0], color='green', linestyle='--', label=f"Checkpoint @ Epoch {epochBestWeights}"))
+
+    # Add global legend with only those handles
+ #   fig.legend(handles=custom_lines, loc='center', ncol=1, fontsize='small', frameon=True)
+    #   plt.subplots_adjust(bottom=0.15)
+    if epochEarlyStopped != None and epochBestWeights != None:
+        fig.legend(handles=custom_lines, loc='center', ncol=1, fontsize='small', frameon=True)
+ #       plt.tight_layout(rect=[0, 0, 0.93, 1])  # Leave room on the right
+ #   else:
+ #       plt.tight_layout()
     plt.tight_layout()
 
     # Save both figures

@@ -92,7 +92,7 @@ CONFIG = {
     "metrics": ['accuracy', Precision(), Recall(), f1_score], # metrics = ['mse', 'mae', 'accuracy'],
     "enable_scaling": True,
     "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
-    "optimizer": SGD,
+    "optimizer": Adam,
     "momentum": 0.9, # for SGD
     "units": {
         "SimpleRNN": [64, 32, 32], # [32, 32]
@@ -100,13 +100,13 @@ CONFIG = {
         "LSTM": [32, 32, 32],  # 32
     },
     "neurons": {
-        "Dense": [128, 32, 64], # 64
+        "Dense": [64, 32, 64], # 64
     },
     "layers": {
         "SimpleRNN": 0, # 2
         "GRU": 0, # 0
         "LSTM": 0, # 1
-        "Dense": 2, # 1ty
+        "Dense": 1, # 1ty
         "Dropout": 1,
         "BatchNorm": 1
     },
@@ -129,6 +129,8 @@ learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
 #filepath_labels = "Labels__Pitt_nCl5_nN50_winSize10_stride1_winSizeSkip20_nEmbeddings50_2025-03-22_00-00-15.csv"
 filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
 
 if CONFIG['split_options']:
     import Help_03_Paths as fp
@@ -426,16 +428,19 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
         return Y_train, Y_val, Y_test
 #    Y_train, Y_val, Y_test = shuffleLabelsRandomly(Y_train, Y_val, Y_test)
 
+
+
     description = "NOT NORMALIZED"
     print(f" ----- {description} -----")
     L2distance_Means_All, CosineSimilarity_Means_All, CosineSimilarity_AvgByClass_All, all_cosine_scores = (
         compute_distances_and_plot(X_train, X_val, X_test, Y_train, Y_val, Y_test, description=description))
-    plot_cosine_similarity_histogram(all_cosine_scores, description)
+#    plot_cosine_similarity_histogram(all_cosine_scores, description)
 
     description = "NORMALIZED"
     print(f" ----- {description} -----")
     L2distance_Means_All, CosineSimilarity_Means_All, CosineSimilarity_AvgByClass_All, all_cosine_scores = (
         compute_distances_and_plot(X_train_normalized, X_val_normalized, X_test_normalized, Y_train, Y_val, Y_test, description=description))
+ #   plot_cosine_similarity_histogram(all_cosine_scores, description)
     cosineMetrics = {
         "L2distance_Means_All": L2distance_Means_All,
         "CosineSimilarity_Means_All": CosineSimilarity_Means_All,
@@ -446,8 +451,8 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     if is_first_run:
         print(" ----- CLASSICAL MODELS -----\n")
         print(" ----- NOT NORMALIZED -----")
-        print(" ----- NORMALIZED ----- ")
         train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state)
+        print(" ----- NORMALIZED ----- ")
         train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state)
 
         methods = [PCA, TSNE, umap.UMAP]
@@ -563,9 +568,15 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
 
+    # Best epoch index (0-based), +1 to make it 1-based
+    epochBestWeights = np.argmin(history.history['val_loss']) + 1
+    epochEarlyStopped = len(history.history['val_loss'])  # Final epoch (early stopped or max epochs)
+    if epochBestWeights == epochEarlyStopped:
+        epochBestWeights = epochEarlyStopped = None
+
     saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
                               fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm)
-    plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams)
+    plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams, epochEarlyStopped, epochBestWeights)
     plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)
 
 

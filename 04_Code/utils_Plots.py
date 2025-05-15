@@ -1,3 +1,4 @@
+import librosa
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -14,6 +15,35 @@ from collections import Counter
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 from utils00 import returnFileNameToSave
+
+
+# ----- 01 -----
+def plot_audio_feature(data, sr, feature_type='raw', hop_length=512):
+    if feature_type == 'raw':
+        # Plot raw waveform
+        plt.figure(figsize=(10, 3))
+        librosa.display.waveshow(data, sr=sr)
+        plt.title('Raw Audio Waveform')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Amplitude')
+        plt.tight_layout()
+        plt.show()
+
+    elif feature_type == 'mfcc':
+        # Plot precomputed MFCCs
+        plt.figure(figsize=(10, 4))
+        librosa.display.specshow(data, x_axis='time', sr=sr, hop_length=hop_length)
+        plt.colorbar()
+        plt.title('MFCC')
+        plt.ylabel('MFCC Coefficient')
+        plt.xlabel('Time (s)')
+        plt.tight_layout()
+        plt.show()
+
+    else:
+        raise ValueError(f"Unknown feature_type '{feature_type}'. Use 'raw' or 'mfcc'.")
+
+
 
 # ----- 01 -----
 def plot_token_distribution_Histogram(data, name="Token", bins=30, title=None, save_path=None, show=True, stats=None, ax=None):

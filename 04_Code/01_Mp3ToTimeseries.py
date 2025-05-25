@@ -14,8 +14,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-from utils00 import returnFormattedDateTimeNow, returnDistribution, printLabelCounts, write_csv01, createResultsFile01, \
-    read_padded_csv_with_lengths, readCsvAsDataframe, returnDataAndLabelsWithoutNA, makeLabelsInt, print_data_info
+from utils00 import returnFormattedDateTimeNow, returnDistribution, printLabelCounts, write_output01, createResultsFile01, \
+    read_file_returnPadded_And_lengths, readCsvAsDataframe, returnDataAndLabelsWithoutNA, makeLabelsInt, print_data_info
 from utils_Plots import plot_colName_distributions, plot_audio_feature
 
 
@@ -119,14 +119,14 @@ def returnRMSClippedSignal(signalToClip, frame_length, hop_length, threshold=0.0
             raise ValueError("No valid frames after RMS filtering.")
         return frames[:, valid_mask].flatten()  # Flatten back
 
-def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_rms_clipping=False, threshold=0.00, summary=False, use_mfcc_deltas = False, resample=False, resample_length=40):
+def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_rms_clipping=False, threshold=0.00, mfcc_summary=False, use_mfcc_deltas = False, resample=False, resample_length=40):
     # Step 1: Compute MFCC
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length, n_fft=frame_length)
 
     if apply_rms_clipping:
         mfcc = returnRMSClippedSignal(mfcc, frame_length, hop_length, threshold, is_mfcc=True, originalAudio=audio)
 
-    if summary:
+    if mfcc_summary:
         mfcc_mean = np.mean(mfcc, axis=1)
         mfcc_std = np.std(mfcc, axis=1)
 
@@ -148,13 +148,18 @@ def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_r
         else:
             return np.concatenate([mfcc_mean, mfcc_std])  # shape: (26,) for n_mfcc=13
     else:
+        if use_mfcc_deltas and mfcc.shape[1] >= 5:
+            delta = librosa.feature.delta(mfcc)
+            delta2 = librosa.feature.delta(mfcc, order=2)
+            mfcc = np.concatenate([mfcc, delta, delta2], axis=0)  # Now shape = [13*3, T]
+
         # Flatten full sequence
         if resample:
             # Resample each MFCC to fixed time length
             mfcc = np.array([
                 np.interp(np.linspace(0, 1, resample_length),
                           np.linspace(0, 1, mfcc.shape[1]),
-                          mfcc[i]) for i in range(n_mfcc)
+                          mfcc[i]) for i in range(mfcc.shape[0])
             ])
         return mfcc.flatten()
 
@@ -175,7 +180,7 @@ def segment_audio_and_extract_mfccs(audio, sr, window_sec=2.0, hop_sec=1.0, conf
                 hop_length=config["hop_length"],
                 apply_rms_clipping=config["apply_rms_clipping_mfcc"],
                 threshold=config["threshold"],
-                summary=config["mfcc_summary"],
+                mfcc_summary=config["mfcc_summary"],
                 use_mfcc_deltas=config["use_mfcc_deltas"],
                 resample=config["resampleTimeseries"],
                 resample_length=config["resample_length"]
@@ -341,7 +346,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
                 plot_audio_feature(audio, sr, feature_type=feature_type)
             elif feature_type == "mfcc":
                 features = extract_mfcc_timeseries(audio, sr, n_mfcc=n_mfcc, frame_length=frame_length, hop_length=hop_length, apply_rms_clipping=apply_rms_clipping_mfcc, threshold=threshold,
-                                                   summary=mfcc_summary, use_mfcc_deltas=use_mfcc_deltas, resample=resample, resample_length=resample_length)
+                                                   mfcc_summary=mfcc_summary, use_mfcc_deltas=use_mfcc_deltas, resample=resample, resample_length=resample_length)
      #           features = segment_and_extract_mfcc_means(audio, sr, config, window_sec=2.0, hop_sec=1.0)
                 # This is only for plotting, compute MFCC properly
     #            mfcc_for_plot = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=config["n_mfcc"], hop_length=hop_length, n_fft=frame_length)
@@ -454,11 +459,11 @@ def logicForPitt(file_path_caseName = "Pitt"):
 
     filenameVars += "_"
  #   printLabelCounts(valid_labels)
-    write_csv01(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
-    write_csv01(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="data", use_pandas=False)
+    write_output01(valid_labels, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="labels", use_pandas=True)
+    write_output01(output_timeseries_ALL, file_path_caseName, subfolderName, filenameVars, formatted_datetime, prefix="data", file_format="npy", use_pandas=False)
 
     createResultsFile01(config, df_metadata, valid_labels, total_timeseries_time, stats_duration,
-                      stats_sampleRate, file_path_caseName, subfolderName, filenameVars)
+                      stats_sampleRate, file_path_caseName, subfolderName, filenameVars, formatted_datetime)
 
     stats_maxFreq = plot_colName_distributions(df_metadata, colName="max_freq", title="Max Frequency Distributions by Label")
     returnDistribution(df_metadata['OriginalSR'], "Original SR")
@@ -474,212 +479,215 @@ config = {
     "apply_rms_clipping_global": False,
     "apply_rms_clipping_mfcc": False,
     "mfcc_summary": False,  # True for mean+std, False for flatten
-    "use_mfcc_deltas": True,  # Add Δ and ΔΔ features (summary only)
+    "use_mfcc_deltas": False,  # Add Δ and ΔΔ features (summary only)
     "n_mfcc": 13, #13
     "verbose": True
 }
 
 file_path_caseName = "Pitt"
-#logicForPitt(file_path_caseName)
+logicForPitt(file_path_caseName)
 
 
 
-def load_features_and_labels(base_folder):
-    """Helper to load your saved features and labels."""
-    labels_path = [os.path.join(base_folder, f) for f in os.listdir(base_folder) if "labels" in f and f.endswith(".csv")][-1]
-    features_path = [os.path.join(base_folder, f) for f in os.listdir(base_folder) if "data" in f and f.endswith(".csv")][-1]
+def runLocalExperiment():
+    def load_features_and_labels(base_folder):
+        """Helper to load your saved features and labels."""
+        labels_path = [os.path.join(base_folder, f) for f in os.listdir(base_folder) if "labels" in f and f.endswith(".csv")][-1]
+        features_path = [os.path.join(base_folder, f) for f in os.listdir(base_folder) if "data" in f and f.endswith(".csv")][-1]
 
-    labels = pd.read_csv(labels_path)["label"].values
-    features = np.loadtxt(features_path, delimiter=",")
+        labels = pd.read_csv(labels_path)["label"].values
+        features = np.loadtxt(features_path, delimiter=",")
 
-    return features, labels
+        return features, labels
 
-def get_latest_data_and_label_files(folder_path):
-    # Find all label and data CSVs
-    label_files = glob.glob(os.path.join(folder_path, "*labels*.csv"))
-    data_files = glob.glob(os.path.join(folder_path, "*data*.csv"))
+    def get_latest_data_and_label_files(folder_path):
+        # Find all label and data CSVs
+        label_files = glob.glob(os.path.join(folder_path, "*labels*.csv"))
+        data_files = glob.glob(os.path.join(folder_path, "*data*.csv"))
 
-    if not label_files or not data_files:
-        raise ValueError("❌ No matching label or data files found!")
+        if not label_files or not data_files:
+            raise ValueError("❌ No matching label or data files found!")
 
-    # Sort by last modified time
-    label_files = sorted(label_files, key=os.path.getmtime)
-    data_files = sorted(data_files, key=os.path.getmtime)
+        # Sort by last modified time
+        label_files = sorted(label_files, key=os.path.getmtime)
+        data_files = sorted(data_files, key=os.path.getmtime)
 
-    # Take the latest
-    filepath_labels = os.path.basename(label_files[-1])
-    filepath_data = os.path.basename(data_files[-1])
+        # Take the latest
+        filepath_labels = os.path.basename(label_files[-1])
+        filepath_data = os.path.basename(data_files[-1])
 
-    print(f"🔵 Found LABEL file: {filepath_labels}")
-    print(f"🔵 Found DATA file: {filepath_data}")
+        print(f"🔵 Found LABEL file: {filepath_labels}")
+        print(f"🔵 Found DATA file: {filepath_data}")
 
-    return filepath_data, filepath_labels
+        return filepath_data, filepath_labels
 
-def load_latest_features_and_labels(base_folder):
-    """Load the latest feature and label files based on modification time (correctly)."""
-    label_files = glob.glob(os.path.join(base_folder, "*labels*.csv"))
-    feature_files = glob.glob(os.path.join(base_folder, "*features.npy"))
+    def load_latest_features_and_labels(base_folder):
+        """Load the latest feature and label files based on modification time (correctly)."""
+        label_files = glob.glob(os.path.join(base_folder, "*labels*.csv"))
+        feature_files = glob.glob(os.path.join(base_folder, "*features.npy"))
 
-    if not label_files or not feature_files:
-        raise ValueError("❌ No matching label or feature files found!")
+        if not label_files or not feature_files:
+            raise ValueError("❌ No matching label or feature files found!")
 
-    label_files = sorted(label_files, key=os.path.getmtime)
-    feature_files = sorted(feature_files, key=os.path.getmtime)
+        label_files = sorted(label_files, key=os.path.getmtime)
+        feature_files = sorted(feature_files, key=os.path.getmtime)
 
-    latest_label_file = label_files[-1]
-    latest_feature_file = feature_files[-1]
+        latest_label_file = label_files[-1]
+        latest_feature_file = feature_files[-1]
 
-    print(f"🔵 Loading LABEL file: {latest_label_file}")
-    print(f"🔵 Loading FEATURE file: {latest_feature_file}")
+        print(f"🔵 Loading LABEL file: {latest_label_file}")
+        print(f"🔵 Loading FEATURE file: {latest_feature_file}")
 
-    labels = np.loadtxt(latest_label_file, delimiter=",", dtype=str)
-    features = np.load(latest_feature_file, allow_pickle=True)
+        labels = np.loadtxt(latest_label_file, delimiter=",", dtype=str)
+        features = np.load(latest_feature_file, allow_pickle=True)
 
-    return features, labels
+        return features, labels
 
-import xgboost as xgb
-import lightgbm as lgb
+    import xgboost as xgb
+    import lightgbm as lgb
 
-def train_validate_test_pipeline(features, labels, model=None, normalization_method="standard",
-                                 apply_pca=False, pca_variance_threshold=0.95):
-    """Split, normalize, train, and show detailed predictions + probabilities."""
-    if model is None:
-        # Train XGBoost
+    def train_validate_test_pipeline(features, labels, model=None, normalization_method="standard",
+                                     apply_pca=False, pca_variance_threshold=0.95):
+        """Split, normalize, train, and show detailed predictions + probabilities."""
+        if model is None:
+            # Train XGBoost
 
-     #   model = xgb.XGBClassifier(
-        model = lgb.LGBMClassifier(
-            n_estimators=100,
-            learning_rate=0.1,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=1.0,  # L1 regularization
-            reg_lambda=1.0,  # L2 regularization
-            random_state=42,
-            use_label_encoder=False,
-            eval_metric='logloss'
+         #   model = xgb.XGBClassifier(
+            model = lgb.LGBMClassifier(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=6,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=1.0,  # L1 regularization
+                reg_lambda=1.0,  # L2 regularization
+                random_state=42,
+                use_label_encoder=False,
+                eval_metric='logloss'
+            )
+
+        # Step 1: Split
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            features, labels, test_size=0.30, random_state=42, stratify=labels
         )
 
-    # Step 1: Split
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        features, labels, test_size=0.30, random_state=42, stratify=labels
-    )
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+        )
 
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
-    )
+        if normalization_method == "standard":
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_val = scaler.transform(X_val)
+            X_test = scaler.transform(X_test)
+            print("🔵 Applied StandardScaler normalization.")
 
-    if normalization_method == "standard":
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
-        X_test = scaler.transform(X_test)
-        print("🔵 Applied StandardScaler normalization.")
+        elif normalization_method == "minmax":
+            scaler = MinMaxScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_val = scaler.transform(X_val)
+            X_test = scaler.transform(X_test)
+            print("🔵 Applied MinMaxScaler normalization.")
 
-    elif normalization_method == "minmax":
-        scaler = MinMaxScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
-        X_test = scaler.transform(X_test)
-        print("🔵 Applied MinMaxScaler normalization.")
+        # Step 2b: Apply PCA if requested
+        if apply_pca:
+            pca = PCA(n_components=pca_variance_threshold, svd_solver='full')
+            X_train = pca.fit_transform(X_train)
+            X_val = pca.transform(X_val)
+            X_test = pca.transform(X_test)
+            print(f"🔵 PCA applied! Reduced dimensions: {X_train.shape[1]} components.")
 
-    # Step 2b: Apply PCA if requested
-    if apply_pca:
-        pca = PCA(n_components=pca_variance_threshold, svd_solver='full')
-        X_train = pca.fit_transform(X_train)
-        X_val = pca.transform(X_val)
-        X_test = pca.transform(X_test)
-        print(f"🔵 PCA applied! Reduced dimensions: {X_train.shape[1]} components.")
+        # Step 3: Train
+        model.fit(X_train, y_train)
 
-    # Step 3: Train
-    model.fit(X_train, y_train)
+        # Step 4: Predict
+        train_preds = model.predict(X_train)
+        val_preds = model.predict(X_val)
+        test_preds = model.predict(X_test)
 
-    # Step 4: Predict
-    train_preds = model.predict(X_train)
-    val_preds = model.predict(X_val)
-    test_preds = model.predict(X_test)
+        # Step 5: Predict Probabilities
+        train_probs = model.predict_proba(X_train)
+        val_probs = model.predict_proba(X_val)
+        test_probs = model.predict_proba(X_test)
 
-    # Step 5: Predict Probabilities
-    train_probs = model.predict_proba(X_train)
-    val_probs = model.predict_proba(X_val)
-    test_probs = model.predict_proba(X_test)
+        # Step 6: Accuracy
+        train_acc = accuracy_score(y_train, train_preds)
+        val_acc = accuracy_score(y_val, val_preds)
+        test_acc = accuracy_score(y_test, test_preds)
 
-    # Step 6: Accuracy
-    train_acc = accuracy_score(y_train, train_preds)
-    val_acc = accuracy_score(y_val, val_preds)
-    test_acc = accuracy_score(y_test, test_preds)
+        print(f"\n✅ Train Accuracy: {train_acc:.4f}")
+        print(f"✅ Validation Accuracy: {val_acc:.4f}")
+        print(f"✅ Test Accuracy: {test_acc:.4f}\n")
 
-    print(f"\n✅ Train Accuracy: {train_acc:.4f}")
-    print(f"✅ Validation Accuracy: {val_acc:.4f}")
-    print(f"✅ Test Accuracy: {test_acc:.4f}\n")
+        # Step 7: Show Predictions
+        print("🔵 Validation Predictions vs True Labels + Probabilities:")
+     #   for pred, true, prob in zip(val_preds, y_val, val_probs):
+    #       print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
 
-    # Step 7: Show Predictions
-    print("🔵 Validation Predictions vs True Labels + Probabilities:")
- #   for pred, true, prob in zip(val_preds, y_val, val_probs):
-#       print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
+        print("\n🟢 Test Predictions vs True Labels + Probabilities:")
+      #  for pred, true, prob in zip(test_preds, y_test, test_probs):
+      #      print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
 
-    print("\n🟢 Test Predictions vs True Labels + Probabilities:")
-  #  for pred, true, prob in zip(test_preds, y_test, test_probs):
-  #      print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
+        return train_acc, val_acc, test_acc
 
-    return train_acc, val_acc, test_acc
-
-# 📍 Run after logicForPitt() finishes
-# Set your folder
-timeSeriesDataPath = "/01_TimeSeriesData/"
-folderPath = os.getcwd() + timeSeriesDataPath
+    # 📍 Run after logicForPitt() finishes
+    # Set your folder
+    timeSeriesDataPath = "/01_TimeSeriesData/"
+    folderPath = os.getcwd() + timeSeriesDataPath
 
 
-# Get latest files
-filepath_data, filepath_labels = get_latest_data_and_label_files(folderPath)
+    # Get latest files
+    filepath_data, filepath_labels = get_latest_data_and_label_files(folderPath)
 
-# Now you can load!
-data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
-initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename="labels", as_series=True)
+    # Now you can load!
+    data, lengths = read_file_returnPadded_And_lengths(os.path.join(folderPath, filepath_data))
+    initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename="labels", as_series=True)
 
-# Process
-data, labels = returnDataAndLabelsWithoutNA(data, initial_labels, addIndexColumn=True)
-labels = makeLabelsInt(labels)
-data.columns = data.columns.astype(str)
+    # Process
+    data, labels = returnDataAndLabelsWithoutNA(data, initial_labels, addIndexColumn=True)
+    labels = makeLabelsInt(labels)
+    data.columns = data.columns.astype(str)
 
-print_data_info(data, labels, "AFTER DROPPING NA")
+    print_data_info(data, labels, "AFTER DROPPING NA")
 
-# 2. Train + validate + test
-models = [LogisticRegression(
-    solver='liblinear',
-    random_state=42,
-    max_iter=1000
-),
-RandomForestClassifier()]
+    # 2. Train + validate + test
+    models = [LogisticRegression(
+        solver='liblinear',
+        random_state=42,
+        max_iter=1000
+    ),
+    RandomForestClassifier()]
 
-apply_pca = True
-pca_variance_threshold = 0.95
+    apply_pca = True
+    pca_variance_threshold = 0.95
 
-n_runs = 10
-for model in models:
-    print(f"\nMODEL -> {model}")
-    train_accuracies = []
-    val_accuracies = []
-    test_accuracies = []
-    for run in range(n_runs):
-        print(f"🔵 Run {run + 1}/{n_runs}")
-    #    val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="standard", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
-        train_acc, val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="minmax", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
+    n_runs = 10
+    for model in models:
+        print(f"\nMODEL -> {model}")
+        train_accuracies = []
+        val_accuracies = []
+        test_accuracies = []
+        for run in range(n_runs):
+            print(f"🔵 Run {run + 1}/{n_runs}")
+        #    val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="standard", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
+            train_acc, val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="minmax", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
 
-        train_accuracies.append(train_acc)
-        val_accuracies.append(val_acc)
-        test_accuracies.append(test_acc)
+            train_accuracies.append(train_acc)
+            val_accuracies.append(val_acc)
+            test_accuracies.append(test_acc)
 
-    # Summary
-    print(f"\n✅ Final Results after {n_runs} runs:")
-    print(f"Train Accuracy: {np.mean(train_accuracies):.4f} ± {np.std(train_accuracies):.4f}")
-    print(f"Validation Accuracy: {np.mean(val_accuracies):.4f} ± {np.std(val_accuracies):.4f}")
-    print(f"Test Accuracy: {np.mean(test_accuracies):.4f} ± {np.std(test_accuracies):.4f}")
+        # Summary
+        print(f"\n✅ Final Results after {n_runs} runs:")
+        print(f"Train Accuracy: {np.mean(train_accuracies):.4f} ± {np.std(train_accuracies):.4f}")
+        print(f"Validation Accuracy: {np.mean(val_accuracies):.4f} ± {np.std(val_accuracies):.4f}")
+        print(f"Test Accuracy: {np.mean(test_accuracies):.4f} ± {np.std(test_accuracies):.4f}")
 
-results_df = pd.DataFrame({
-    "Split": ["Train", "Validation", "Test"],
-    "Accuracy": [np.mean(train_accuracies), np.mean(val_accuracies), np.mean(test_accuracies)],
-    "StdDev": [np.std(train_accuracies), np.std(val_accuracies), np.std(test_accuracies)]
-})
-results_df.to_csv(os.path.join(folderPath, "experiment_results.csv"), index=False)
-print("Results saved!")
+    results_df = pd.DataFrame({
+        "Split": ["Train", "Validation", "Test"],
+        "Accuracy": [np.mean(train_accuracies), np.mean(val_accuracies), np.mean(test_accuracies)],
+        "StdDev": [np.std(train_accuracies), np.std(val_accuracies), np.std(test_accuracies)]
+    })
+    results_df.to_csv(os.path.join(folderPath, "experiment_results.csv"), index=False)
+    print("Results saved!")
+
+#runLocalExperiment()

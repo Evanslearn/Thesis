@@ -191,6 +191,7 @@ common_part = "scalerMinMax_sil0.3625_nCl8_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nE
 common_part = "scalerStandard_sil0.5108_nCl6_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd200_2025-05-03_16-17-43"
 common_part = "scalerStandard_sil0.6477_nCl8_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd5_2025-05-03_21-46-51"
 common_part = "scalerStandard_sil0.6723_nCl16_nN4_wSize36_str9_wSizeSG6_SGLossNCE_nEmbd5_2025-05-04_01-03-39"
+common_part = "scalerStandard_sil0.8626_nCl2_nN4_wSize2048_str1024_wSizeSG6_SGLossNCE_nEmbd50_2025-05-20_06-14-58"
 
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names

@@ -24,7 +24,7 @@ from utils00 import (
     makeLabelsInt,
     doTrainValTestSplit,
     readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    returnDistribution, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
+    returnDistribution, dropInstancesUntilClassesBalance, read_file_returnPadded_And_lengths, return_scaler_type,
     saveResultsFile02, SaveEmbeddingsToOutput02, print_data_info,
 )
 from utils_Plots import (
@@ -217,6 +217,10 @@ class SkipGramNCE(Model):
         ))
         return loss
 def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6, epochs=10, num_negative_samples=5, batch_size=128):
+    if vocab_size <= num_negative_samples:
+        num_negative_samples = vocab_size - 1
+        print(f"⚠️ Reducing num_negative_samples to {num_negative_samples} due to small vocab_size = {vocab_size}")
+
     all_pairs = []
     # ✅ Respect conversation boundaries
     for sequence in corpus:
@@ -345,7 +349,8 @@ def scale_split_data(scaler_class, data, indices, enable_scaling=False, fit=Fals
             scaled_values = scaler_class().transform(X)
 
         scaled_df = pd.DataFrame(scaled_values, columns=X.columns)
-        scaled_df["index"] = scaled_df.index
+     #   scaled_df["index"] = scaled_df.index
+        scaled_df["index"] = subset["index"].values
     return scaled_df.reset_index(drop=True)
 
 def group_tokens_by_conversation(tokens, origins):
@@ -380,7 +385,7 @@ def mainLogic():
     folderPath = os.getcwd() + timeSeriesDataPath
 
 #    data = readCsvAsDataframe(folderPath, filepath_data)
-    data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
+    data, lengths = read_file_returnPadded_And_lengths(os.path.join(folderPath, filepath_data))
     initial_labels = readCsvAsDataframe(folderPath, filepath_labels, dataFilename = "labels", as_series=True)
 
     data, labels = returnDataAndLabelsWithoutNA(data, initial_labels, addIndexColumn=True)
@@ -413,6 +418,10 @@ def mainLogic():
     segment_window_length = config["window_size"]
     segment_stride = config["stride"]
 
+    data_train = data_train.drop(columns=["index"], errors="ignore")
+    data_val = data_val.drop(columns=["index"], errors="ignore")
+    data_test = data_test.drop(columns=["index"], errors="ignore")
+
     # Slice conversations into smaller time patches per split
     segments_train, origins_train = slice_timeseries_rowwise(data_train, lengths_train, segment_window_length, segment_stride)
     segments_val, origins_val = slice_timeseries_rowwise(data_val, lengths_val, segment_window_length, segment_stride)
@@ -423,7 +432,7 @@ def mainLogic():
     labels_segments_val = labels_val[origins_val].reset_index(drop=True)
     labels_segments_test = labels_test[origins_test].reset_index(drop=True)
 
-    print(data_train.columns)
+    print(f"data_train.columns = {data_train.columns}")
     print(f"Segments_train.shape ->   {segments_train.shape}")
     print(f"Origins_train.shape ->   {origins_train.shape}")
 
@@ -465,6 +474,7 @@ def mainLogic():
     window_size_skipgram = config["window_size_skipgram"]
     epochs = config["epochs"]
     loss = config['skipgram_loss']
+    num_negative_samples = config['num_negative_samples']
 
     tokens, counts = returnDistribution(tokens_train)
     print('\n Distribution of most common tokens')
@@ -487,7 +497,7 @@ def mainLogic():
     print(f"Vocal size = n_clusters -> {vocab_size} = {n_clusters}")
     start_time = time.time()
     if loss == "NCE":
-        skipgram_model, skipgram_history, epochEarlyStopped = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs)
+        skipgram_model, skipgram_history, epochEarlyStopped = train_skipgram_with_nce(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, num_negative_samples)
     else:
     # skipgram_model = train_skipgram(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
         skipgram_model, skipgram_history, epochEarlyStopped = train_skipgram_withinSameConversations(train_token_sequences, vocab_size, embedding_dim, window_size_skipgram, epochs, loss=loss)
@@ -594,45 +604,30 @@ def mainLogic():
     analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embeddings, dataType, save=True, **PlothelpDict)
 
 
-filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
-filepath_data = "Pitt_output_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
-#filepath_data = "Pitt_output_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv" # crashed
-#filepath_data = "Pitt_output_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
-filepath_data = "Pitt_data_mfcc_sR22050_hopL512_nFFT2048_2025-04-28_02-36-51.csv"
-filepath_data = "Pitt_data_mfcc_sR44100_hopL512mfcc_summary_nFFT2048_2025-05-02_23-12-46.csv"
-filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
-filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-03_00-08-48.csv"
-filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.02_2025-04-21_19-14-14.csv"
-filepath_labels = "Pitt_labels_mfcc_sR16000_hopL512_thresh0.0_2025-04-21_20-57-33.csv"
-#filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_thresh0.0_2025-04-22_23-38-30.csv"
-filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_thresh0.0_2025-04-23_00-06-36.csv"
-filepath_labels = "Pitt_labels_mfcc_sR22050_hopL512_nFFT2048_2025-04-28_02-36-51.csv"
-filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512mfcc_summary_nFFT2048_2025-05-02_23-12-46.csv"
-filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
-filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-03_00-08-48.csv"
 
 filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy"
+
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
 filepath_labels= "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {
-    "n_clusters_min": 2,        # Min number of clusters for KMeans - 2
-    "n_clusters_max": 10,       # Max number of clusters for KMeans - 10
-  #  "n_clusters_list": range(config["n_clusters_min"], config["n_clusters_max"],
  #   "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
   #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
 #    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 256, 300, 350, 500, 700, 1000, 1500, 3000],
-    "n_clusters_list": [6, 8, 16, 24, 32, 64, 128, 256],
+    "n_clusters_list": [2, 4],#, 8, 16, 24, 32, 64, 128, 256, 300, 350], #500, 700, 1000],
     "knn_neighbors": 4,        # Number of neighbors for k-NN - 50
-    "window_size": 36,    # 2       # Window size for sequence generation - 10
-    "stride": 9,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 5,       # Dimension of word embeddings - 300
+    "window_size": 2048,    # 2       # Window size for sequence generation - 10
+    "stride": 1024,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 50,       # Dimension of word embeddings - 300
     "window_size_skipgram": 6, # - 20
     "epochs": 50,                # Number of training epochs
+    "num_negative_samples": 5,
     "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper
     "skipgram_loss": "NCE", # "sparse_categorical_crossentropy", "NCE
     "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"

@@ -322,7 +322,7 @@ def plot_token_distribution_Bar(tokens, top_n, filenamePrefix, filepath_data, su
     # Add legend with total count/%
     ax.legend([legend_label], loc='upper right')
     plt.tight_layout()
-  #  plt.show()
+    plt.show()
 
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
@@ -565,11 +565,11 @@ def plotClassBarPlots(Y_train, Y_val, Y_test):
                 ha='center',
                 va='center',
                 fontsize=12,
-                color='white' if height > 40 else 'black',  # readable contrast
+                color='white',# if height > 40 else 'black',  # readable contrast
                 fontweight='bold'
             )
     plt.tight_layout()
-    plt.show()
+  #  plt.show()
 
 # ----- 03 -----
 def plotTrainValMetrics(history, filepath_data, figureNameParams, epochEarlyStopped=None, epochBestWeights=None, flagRegression = "NO"):
@@ -625,8 +625,8 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, epochEarlyStop
             training_recall = history.history['recall']
             validation_recall = history.history['val_recall']
         # F1 score
-        training_f1 = history.history.get('f1_score', [])
-        validation_f1 = history.history.get('val_f1_score', [])
+        training_f1 = history.history.get('f1_score_keras', [])
+        validation_f1 = history.history.get('val_f1_score_keras', [])
 
 
         axes[0, 1].plot(range(1, epochs + 1), training_precision, label='Training Precision', color='blue', marker='o')
@@ -724,10 +724,10 @@ def plotAndSaveConfusionMatrix(cm_raw, cm_norm, filepath_data, figureNameParams)
     # Plot side-by-side
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    disp_raw.plot(ax=ax1, cmap='Blues', values_format='d')
+    disp_raw.plot(ax=ax1, cmap='Blues', values_format='d', text_kw={'fontsize': 18})
     ax1.set_title("Confusion Matrix (Raw Counts)")
 
-    disp_norm.plot(ax=ax2, cmap='Blues', values_format='.2f')
+    disp_norm.plot(ax=ax2, cmap='Blues', values_format='.2f', text_kw={'fontsize': 18})
     ax2.set_title("Confusion Matrix (Normalized)")
 
     plt.tight_layout()
@@ -737,8 +737,6 @@ def plotAndSaveConfusionMatrix(cm_raw, cm_norm, filepath_data, figureNameParams)
 
     fig.savefig(filename_cm)
     print(f"Saved combined confusion matrix to: {filename_cm}")
-
-
     return
 
 # ----- 03 -----

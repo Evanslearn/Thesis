@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import random
+from io import StringIO
 
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.decomposition import PCA
@@ -31,7 +32,7 @@ tf.get_logger().setLevel('ERROR')  # Suppress DEBUG logs
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, confusion_matrix, \
-    ConfusionMatrixDisplay
+    ConfusionMatrixDisplay, f1_score
 from sklearn.utils import resample
 from xgboost import XGBClassifier
 
@@ -39,9 +40,10 @@ from utils00 import (
     returnFilepathToSubfolder,
     doTrainValTestSplit,
     makeLabelsInt, readCsvAsDataframe, returnFormattedDateTimeNow, returnDataAndLabelsWithoutNA,
-    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_padded_csv_with_lengths, return_scaler_type,
+    trim_datetime_suffix, dropInstancesUntilClassesBalance, read_file_returnPadded_And_lengths, return_scaler_type,
     returnL2Distance, print_data_info, save_data_to_csv03, saveTrainingMetricsToFile03, printLabelCounts,
-    cosine_similarity_between_means, cosine_similarity_all_pairs, compute_distances_and_plot
+    cosine_similarity_between_means, cosine_similarity_all_pairs, compute_distances_and_plot,
+    print_classification_report
 )
 from utils_Plots import plot_tsnePCAUMAP, plotTrainValMetrics, plot_bootstrap_distribution, \
     calculateAndReturnConfusionMatrix, plotAndSaveConfusionMatrix, plotClassBarPlots, plot_cosine_similarity_histogram
@@ -70,7 +72,7 @@ def calculate_class_ratios(labels_list, names_list):
         ratios.append(ratio)
     return ratios
 
-def f1_score(y_true, y_pred):
+def f1_score_keras(y_true, y_pred):
     # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
     y_pred_binary = K.cast(K.greater(y_pred, 0.5), dtype='float32')  # Threshold at 0.5
     tp = K.sum(K.round(y_true * y_pred_binary))
@@ -84,12 +86,12 @@ def f1_score(y_true, y_pred):
 
 ### Global Configuration Dictionary ###
 CONFIG = {
-    "split_options": ["NO"], # "YES", "NO"
+    "split_options": ["YES"], # "YES", "NO"
     "random_state": 42,
     "batch_size": 128,
     "epochs": 50,
     "loss": "binary_crossentropy",
-    "metrics": ['accuracy', Precision(), Recall(), f1_score], # metrics = ['mse', 'mae', 'accuracy'],
+    "metrics": ['accuracy', Precision(), Recall(), f1_score_keras], # metrics = ['mse', 'mae', 'accuracy'],
     "enable_scaling": True,
     "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
     "optimizer": Adam,
@@ -131,6 +133,8 @@ filepath_data = "Pitt_output_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_
 filepath_labels = "Pitt_labels_raw_sR300_frameL2048_hopL512_thresh0.02_2025-04-08_00-11-56.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv"
 
 if CONFIG['split_options']:
     import Help_03_Paths as fp
@@ -163,7 +167,7 @@ def loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels
     labels = readCsvAsDataframe(os.getcwd() + "/01_TimeSeriesData/", filepath_labels, "labels", as_series=True)
 
     folderPath = os.getcwd() + "/01_TimeSeriesData/"
-    data, lengths = read_padded_csv_with_lengths(os.path.join(folderPath, filepath_data))
+    data, lengths = read_file_returnPadded_And_lengths(os.path.join(folderPath, filepath_data))
 
     print_data_info(data, labels, "BEFORE DROPNA + PADDING")
     # Clean first
@@ -320,15 +324,21 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
             # fallback: treat predictions as binary probs
             return clf.predict(X).astype(float)
 
-    y_proba_test = get_class_probabilities(clf, X_test)
+    print(f"VAL SET")
+    y_proba_val = get_class_probabilities(clf, X_val)
+    print(f"🧪 Probabilities for {name}:")
+    print(f"Shape: {y_proba_val.shape}")
+    print(f"Values: {y_proba_val}")
 
+    print(f"TEST SET")
+    y_proba_test = get_class_probabilities(clf, X_test)
     print(f"🧪 Probabilities for {name}:")
     print(f"Shape: {y_proba_test.shape}")
-    print(f"Sample: {y_proba_test[:10]}")
+    print(f"Values: {y_proba_test}")
 
-    return combined_df
+    return combined_df, pivot_df
 
-def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state):
+def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state, output_txt=None, append=False):
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000, random_state=random_state),
         "SVM (RBF Kernel)": SVC(kernel='rbf', probability=True, random_state=random_state),
@@ -336,10 +346,59 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
         "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=random_state)
     }
 
+    all_outputs = []
+
     for name, clf in models.items():
-        print(f"\n===== {name} =====")
+        buffer = StringIO()
         clf.fit(X_train, Y_train)
-        evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test)
+
+        print(f"\n===== {name} =====", file=buffer)
+        print(f"\n🔍 Training: {name}", file=buffer)
+
+        # For combined report
+        combined_reports = []
+
+        for X, Y, set_name in [(X_train, Y_train, "train"), (X_val, Y_val, "validation"), (X_test, Y_test, "test")]:
+            preds = clf.predict(X)
+            report = classification_report(Y, preds, output_dict=True)
+            report_df = pd.DataFrame(report).transpose()
+            report_df["set"] = set_name
+            combined_reports.append(report_df)
+
+            acc = report.get("accuracy", 0)
+            cm = confusion_matrix(Y, preds)
+
+            print(f"\n📊 {set_name.title()} Performance for {name}:", file=buffer)
+            print(classification_report(Y, preds, digits=2), file=buffer)
+            print(f"{set_name.title()} Accuracy: {acc:.4f}", file=buffer)
+            print("Confusion Matrix:", file=buffer)
+            print(cm, file=buffer)
+
+        # Merge combined report
+        combined_df = pd.concat(combined_reports)
+        # Move "set" to front
+        cols = combined_df.columns.tolist()
+        cols.insert(0, cols.pop(cols.index("set")))
+        combined_df = combined_df[cols]
+
+        # Round and reset index
+        combined_df = combined_df.reset_index().rename(columns={"index": "label"})
+        combined_df = combined_df.round(2)
+
+        print(f"\n📋 Combined classification report for {name}:", file=buffer)
+        print(combined_df.to_string(index=False), file=buffer)
+
+        all_outputs.append(buffer.getvalue())
+        buffer.close()
+
+    # Save to text file
+    if output_txt:
+        mode = "a" if append else "w"
+        with open(output_txt, mode) as f:
+            for output in all_outputs:
+                f.write(output)
+                f.write("\n" + "=" * 100 + "\n")
+        print(f"\n📁 Saved classification results to: {output_txt}")
 
 def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     # Extract hyperparameters
@@ -419,7 +478,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
 
     ratio_0_to_1_ALL = calculate_class_ratios([Y_train, Y_val, Y_test], ["Y_train", "Y_val", "Y_test"])
 
- #   plotClassBarPlots(Y_train, Y_val, Y_test)
+    plotClassBarPlots(Y_train, Y_val, Y_test)
     def shuffleLabelsRandomly(Y_train, Y_val, Y_test):
         np.random.seed(42)
         Y_train = np.random.permutation(Y_train)
@@ -449,11 +508,21 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     }
 
     if is_first_run:
+        # Create ONE output file for both runs
+        timestamp = returnFormattedDateTimeNow()
+        output_txt = os.path.join(os.getcwd(), "03_ClassificationResults", f"classical_model_results_ALL_{timestamp}.txt")
+
         print(" ----- CLASSICAL MODELS -----\n")
         print(" ----- NOT NORMALIZED -----")
-        train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state)
+        # Write non-normalized results
+        with open(output_txt, "w") as f:
+            f.write("==== 📊 RESULTS: NON-NORMALIZED DATA ====\n\n")
+        train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state, output_txt=output_txt, append=True)
         print(" ----- NORMALIZED ----- ")
-        train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state)
+        # Write normalized results
+        with open(output_txt, "a") as f:
+            f.write("\n\n==== 📊 RESULTS: NORMALIZED DATA ====\n\n")
+        train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state, output_txt=output_txt, append=True)
 
         methods = [PCA, TSNE, umap.UMAP]
         labels = ["PCA", "t-SNE", "UMAP"]
@@ -486,6 +555,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
             model.add(tf.keras.layers.Dropout(dropout_rate))
     else:
         model.add(tf.keras.layers.Input((X_train_normalized.shape[1],  X_train_normalized.shape[2]), name='input_layer'))
+        model.add(tf.keras.layers.Masking(mask_value=0.0))  # Masking for the cases of 0padding
 
         # Add layers dynamically
         add_rnn_layers(model, "SimpleRNN", SIMPLE_layers, units_simple, GRU_layers > 0 or LSTM_layers > 0)
@@ -564,6 +634,33 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     print()
 #    print(f'\nManual Calculation -> MAE = {mae:.6f} and MSE = {mse:.6f}')
     print(f'Evaluate number = {formatted_loss}, {formatted_string}\nwhere loss: {loss} and metrics: {metric_names}')
+
+    train_predictions = model.predict(X_train_normalized)
+    train_preds_binary = (train_predictions.flatten() >= 0.5).astype(int)
+
+    # VALIDATION SET EVALUATION
+    val_predictions = model.predict(X_val_normalized)
+    val_preds_binary = (val_predictions.flatten() >= 0.5).astype(int)
+
+    cm_val_raw, cm_val_norm = calculateAndReturnConfusionMatrix(Y_val, val_preds_binary)
+    print("Validation Confusion Matrix (Raw):")
+    print(cm_val_raw)
+    print("Validation Confusion Matrix (Normalized):")
+    print(cm_val_norm)
+
+    val_loss_evaluate = model.evaluate(X_val_normalized, Y_val)
+    formatted_val_loss = f"loss = {val_loss_evaluate[0]:.{decimalPoints}f}"
+    formatted_val_metrics = {metric: f'{num:.{decimalPoints}f}' for metric, num in
+                             zip(metric_names, val_loss_evaluate[1:])}
+    val_metrics = formatted_val_metrics
+    val_metrics['loss'] = f"{val_loss_evaluate[0]:.{decimalPoints}f}"
+    formatted_val_string = ', '.join([f"'{metric}' = {val_metrics[metric]}" for metric in val_metrics])
+    print(f"\nValidation Evaluation → {formatted_val_loss}, {formatted_val_string}")
+
+  #  print_classification_report(Y_train, train_preds_binary, "Train Set")
+  #  print_classification_report(Y_val, val_preds_binary, "Validation Set")
+  #  print_classification_report(Y_test, preds_binary, "Test Set")
+
     figureNameParams = f"{needSplitting}split_{scalerName}_ep{epochs}_lr{learning_rate}_batch{batch_size}_activ{activation_dense}"
     print(f"Shape of predictions: {predictions.shape}")
     print(f"Shape of Y_test_normalized: {Y_test.shape}")
@@ -575,10 +672,12 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
         epochBestWeights = epochEarlyStopped = None
 
     saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
-                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm)
+                              fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm,
+                                val_metrics, Y_val.flatten(), val_predictions.flatten(), cm_val_raw, cm_val_norm,
+                                Y_train, train_preds_binary, Y_val, val_preds_binary, Y_test, preds_binary)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams, epochEarlyStopped, epochBestWeights)
+    plotAndSaveConfusionMatrix(cm_val_raw, cm_val_norm, fp.FILEPATH_DATA, figureNameParams + "_VAL")
     plotAndSaveConfusionMatrix(cm_raw, cm_norm, fp.FILEPATH_DATA, figureNameParams)
-
 
 split_options = CONFIG['split_options'] # Define as a variable
 for needSplitting in split_options:

@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 from pandas._testing import iloc
+from sklearn.metrics import classification_report
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 
@@ -155,21 +156,26 @@ def dropInstancesUntilClassesBalance(data, labels):
 
     return data_balanced, labels_balanced
 
-def read_padded_csv_with_lengths(filepath, pad_value=0.0):
-    # is used to load variable-length time series stored as CSV rows of unequal length, and outputs:
-    rows = []
-    lengths = []
-    max_len = 0
+def read_file_returnPadded_And_lengths(filepath, pad_value=0.0):
+    extension = os.path.splitext(filepath)[1].lower()
 
-    with open(filepath, 'r') as f:
-        for line in f:
-            row = [float(val) for val in line.strip().split(',') if val]
-            lengths.append(len(row))
-            max_len = max(max_len, len(row))
-            rows.append(row)
+    data = []
 
-    padded_rows = [row + [pad_value] * (max_len - len(row)) for row in rows]
-    df = pd.DataFrame(padded_rows)
+    if extension == ".csv":
+        with open(filepath, 'r') as f:
+            for line in f:
+                row = [float(val) for val in line.strip().split(',') if val]
+                data.append(row)
+
+    elif extension == ".npy":
+        loaded = np.load(filepath, allow_pickle=True)
+        for row in loaded:
+            data.append(list(row))
+
+    lengths = [len(row) for row in data]
+    max_len = max(lengths)
+    padded_data = [row + [pad_value] * (max_len - len(row)) for row in data]
+    df = pd.DataFrame(padded_data)
     return df, lengths
 
 def returnL2Distance(data, labels):
@@ -273,27 +279,35 @@ def returnFileNameToSave(filepath_data, fileNameParams, imageflag = "YES"):
         save_filename = f"figure_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
     else:
         fileExtension = "csv"
-        save_filename = f"metrics_{new_dynamic_filename}.{fileExtension}"  # Save as PNG
-    # Define the new filename for saving the plot
+        save_filename = f"metrics_{new_dynamic_filename}.{fileExtension}"  # Save as csv
+
+    if imageflag == "TXT":
+        fileExtension = "txt"
+        save_filename = f"metrics_{new_dynamic_filename}.{fileExtension}"  # Save as csv
 
     subfolderName = "03_ClassificationResults"
     filenameFull = returnFilepathToSubfolder(save_filename, subfolderName)
     return filenameFull
 
-def write_csv01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="data", use_pandas=True, verbose=True):
+def write_output01(data, file_path_caseName, subfolderName, filenameVars, formatted_datetime=None, prefix="data", file_format="csv", use_pandas=True, verbose=True):
     if formatted_datetime is None:
         formatted_datetime = returnFormattedDateTimeNow()
 
-    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.csv"
+    extension = file_format
+    filename = f"{file_path_caseName}_{prefix}{filenameVars}{formatted_datetime}.{extension}"
     filenameFull = returnFilepathToSubfolder(filename, subfolderName)
 
     start_time = time.time()
-    if use_pandas:
-        pd.DataFrame(data).to_csv(filenameFull, index=False, header=False)
-    else:
-        with open(filenameFull, "w", newline="") as f:
-            csv.writer(f).writerows(data)
-    # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
+
+    if file_format == "csv":
+        if use_pandas:
+            pd.DataFrame(data).to_csv(filenameFull, index=False, header=False)
+        else:
+            with open(filenameFull, "w", newline="") as f:
+                csv.writer(f).writerows(data)
+        # I noticed how csv is faster than pandas (e.g. 0.93 vs 12.98 seconds), because pandas fills up the file with commas, while csv does not
+    elif file_format == "npy":
+        np.save(filenameFull, np.array(data, dtype=object))
 
     if verbose:
         print(f"✅ CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
@@ -409,9 +423,36 @@ def save_data_to_csv03(data, labels, subfolderName, suffix, data_type):
     data_df.to_csv(data_filepath, index=False, header=False)
     labels_df.to_csv(labels_filepath, index=False, header=False)
 
+import os
+import io
+import pandas as pd
+from sklearn.metrics import classification_report
+
+def print_classification_report(y_true, y_pred_binary, label, csv_file=None, decimals=2):
+    header = f"\nClassification Report for {label}:\n"
+    report_dict = classification_report(y_true, y_pred_binary, output_dict=True)
+    df = pd.DataFrame(report_dict).transpose().round(decimals)
+
+    # Save structured CSV report
+    if csv_file:
+        if isinstance(csv_file, (str, bytes, os.PathLike)):
+            df.to_csv(csv_file)
+        elif isinstance(csv_file, io.TextIOBase):  # Already-opened file
+            csv_file.write(header)
+            df.to_csv(csv_file)
+            csv_file.write("\n")
+
+    # Always print to console
+    print(header)
+    print(df.to_string(float_format=f"%.{decimals}f"))
+    print()
+
 def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
-                              filepath_data, fileNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm):
-    filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="NO")
+                              filepath_data, fileNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm,
+                                val_metrics, Y_true_val, Y_pred_val, cm_val_raw, cm_val_norm,
+                                Y_train, train_preds_binary, Y_val, val_preds_binary, Y_test, preds_binary):
+
+    filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="false")
 
     # Convert history.history (dictionary) to DataFrame
     df_history = pd.DataFrame(history.history)
@@ -466,6 +507,11 @@ def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer
         f.write("\nTraining Time:\n")
         f.write(f"{training_time:.6f} seconds\n")
 
+        # Write both CSV and readable report into the same file
+        print_classification_report(Y_train, train_preds_binary, "Train Set", csv_file=f)
+        print_classification_report(Y_val, val_preds_binary, "Validation Set", csv_file=f)
+        print_classification_report(Y_test, preds_binary, "Test Set", csv_file=f)
+
         f.write("\nTest Set Metrics:\n")
         for metric_name, metric_value in test_metrics.items():
             f.write(f"{metric_name},{metric_value}\n")
@@ -486,6 +532,26 @@ def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer
             f.write(f"For i = {i}, we have:\n")
             f.write(f"Y_predictions[i]     = {predictions[i]}\n")
             f.write(f"Y_test_normalized[i] = {actual_labels[i]}\n\n")
+
+        # --- Save Validation Predictions ---
+        f.write("\nValidation Set Metrics:\n")
+        for metric_name, metric_value in val_metrics.items():
+            f.write(f"{metric_name},{metric_value}\n")
+
+        f.write("\nCONFUSION MATRIX (Validation):\n")
+        df_conf = pd.DataFrame(cm_val_raw)
+        df_conf.to_csv(f, index=False);
+        f.write("\n")
+        df_conf = pd.DataFrame(cm_val_norm)
+        df_conf.to_csv(f, index=False, header=True, float_format="%.3f");
+        f.write("\n")
+
+        f.write("\nPredictions vs Actual Labels (Validation):\n")
+        df_val_results = pd.DataFrame({
+            "true_label": Y_true_val,
+            "predicted_label": Y_pred_val
+        })
+        df_val_results.to_csv(f, index=False)
 
     print(f"All results saved to {filenameFull}!")
     return filenameFull

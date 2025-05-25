@@ -1,0 +1,111 @@
+INPUT FILENAMES:
+Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy
+Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv
+allDataShapes:{
+    "data": [
+        549,
+        150307
+    ],
+    "data_train": [
+        384,
+        150306
+    ],
+    "data_val": [
+        83,
+        150306
+    ],
+    "data_test": [
+        82,
+        150306
+    ]
+}
+allSegmenthapes:{
+    "segments_train": [
+        14310,
+        2048
+    ],
+    "segments_val": [
+        2849,
+        2048
+    ],
+    "segments_test": [
+        3049,
+        2048
+    ]
+}
+silhouette,ch_index,db_index,times,n_clusters
+0.86,25598.92,0.54,50.92,2
+0.84,18301.27,0.95,86.20,4
+0.71,14963.27,1.07,117.71,8
+0.31,10507.14,1.38,185.58,16
+0.31,8397.89,1.40,278.35,24
+0.14,7085.62,1.48,202.11,32
+0.10,4577.68,1.56,342.78,64
+0.06,2899.98,1.61,617.00,128
+0.02,1808.73,1.43,1137.23,256
+0.01,1632.80,1.45,1283.84,300
+0.00,1477.73,1.27,1506.22,350
+0.02,1198.77,1.12,2056.31,500
+-0.00,1009.61,0.96,2915.17,700
+-0.01,869.63,0.82,4256.47,1000
+
+THE WHOLE CONFIG FOLLLOWS:{
+    "n_clusters_list": [
+        2,
+        4,
+        8,
+        16,
+        24,
+        32,
+        64,
+        128,
+        256,
+        300,
+        350,
+        500,
+        700,
+        1000
+    ],
+    "knn_neighbors": 4,
+    "window_size": 2048,
+    "stride": 1024,
+    "embedding_dim": 50,
+    "window_size_skipgram": 6,
+    "epochs": 50,
+    "num_negative_samples": 5,
+    "optimizer_skipgram": "adam",
+    "skipgram_loss": "NCE",
+    "sequenceEmbeddingAveragingMethod": "Average",
+    "batch_size": 64,
+    "perplexity": 30,
+    "random_state": 42,
+    "n_init": 50,
+    "output_folder": "02_Embeddings",
+    "enable_scaling": true,
+    "scaler": "<class 'sklearn.preprocessing._data.StandardScaler'>",
+    "rowWiseScaling": true,
+    "early_stopping": true,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.0001
+}
+SKIPGRAM MODEL HISTORY:
+Epoch,loss
+1,1.356734
+2,1.346843
+3,1.270257
+4,1.181372
+5,1.203632
+6,1.114756
+7,0.971753
+8,0.856862
+9,0.920602
+10,0.756889
+11,0.858886
+12,0.840473
+13,1.040566
+Total Skipgram time: 7.53 seconds
+Epoch early stopped: 13
+
+Token Distribution:
+Token 0: 13312 instances
+Token 1: 998 instances

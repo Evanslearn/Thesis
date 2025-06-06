@@ -7,7 +7,7 @@ import pandas as pd
 
 from keras import Model
 from keras.callbacks import EarlyStopping
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
@@ -34,13 +34,13 @@ from utils_Plots import (
     plot_token_waveforms,
     plot_token_spectrograms,
     plot_umap_of_segments,
-    plot_tsne_of_segments, plot_clustering_metrics, analyze_all_embedding_plots, plotSkipgramLossVsEpoch
+    plot_tsne_of_segments, plot_clustering_metrics, analyze_all_embedding_plots, plotSkipgramLossVsEpoch,
+    compare_token_assignments
 )
 
 
-def find_optimal_clusters(data, n_clusters_list):
-    """Find the optimal number of clusters using silhouette score."""
-    best_n_clusters, best_score, best_model  = None, -1, None
+def find_optimal_clusters(data, n_param_list, clusteringAlgorithm="KMEANS", eps_list=None):
+    best_param_combo, best_score, best_model = None, -1, None
 
     all_metrics = {
         "silhouette": [],
@@ -50,50 +50,84 @@ def find_optimal_clusters(data, n_clusters_list):
         "n_clusters": []
     }
 
-    for n_clusters in n_clusters_list:
-        start_time = time.perf_counter()  # Get current time at start
+    # Choose loop structure
+    if clusteringAlgorithm == "KMEANS":
+        param_grid = [(param,) for param in n_param_list]
+    elif clusteringAlgorithm == "DBSCAN":
+        eps_list = eps_list or [0.5]
+        param_grid = [(eps, min_samples) for eps in eps_list for min_samples in n_param_list]
+    else:
+        raise ValueError(f"Unsupported clustering algorithm: {clusteringAlgorithm}")
 
-        kmeans = KMeans(n_clusters=n_clusters, n_init=config["n_init"], random_state=config["random_state"])
+    for param in param_grid:
+        start_time = time.perf_counter()
+
+        # Create model
+        if clusteringAlgorithm == "KMEANS":
+            n_clusters = param[0]
+            model = KMeans(n_clusters=n_clusters, n_init=config["n_init"], random_state=config["random_state"])
+        else:  # DBSCAN
+            eps, min_samples = param
+            model = DBSCAN(eps=eps, min_samples=min_samples)
+
         try:
-            cluster_labels = kmeans.fit_predict(data)
+            cluster_labels = model.fit_predict(data)
+            n_clusters_found = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+            if n_clusters_found < 2:
+                print(f"⚠️ Skipping {param} — only {n_clusters_found} cluster(s)")
+                continue
 
             sil = silhouette_score(data, cluster_labels)
             ch = calinski_harabasz_score(data, cluster_labels)
             db = davies_bouldin_score(data, cluster_labels)
         except Exception as e:
-            print(f"❌ Error for {n_clusters} clusters: {str(e)}")
+            print(f"❌ Error for param={param}: {e}")
             traceback.print_exc()
-            sil, ch, db = -9999.0, -9999.0, 9999.0  # Clearly bad values
-            kmeans = None  # Mark this model as invalid
+            sil, ch, db = -9999, -9999, 9999
+            model = None
 
-
-        timeElapsed = time.perf_counter() - start_time
+        elapsed = time.perf_counter() - start_time
 
         all_metrics["silhouette"].append(sil)
         all_metrics["ch_index"].append(ch)
         all_metrics["db_index"].append(db)
-        all_metrics["times"].append(timeElapsed)
-        all_metrics["n_clusters"].append(n_clusters)
+        all_metrics["times"].append(elapsed)
+        all_metrics["n_clusters"].append(param)
 
-        print(f"n_clusters={n_clusters} | Sil: {sil:.4f} | CH: {ch:.2f} | DBI: {db:.4f} | Time: {timeElapsed:.2f}s")
+        param_str = f"n_clusters={param[0]}" if clusteringAlgorithm == "KMEANS" else f"eps={param[0]}, min_samples={param[1]}"
+        print(f"method={clusteringAlgorithm} | {param_str} | Sil: {sil:.4f} | CH: {ch:.2f} | DBI: {db:.4f} | Time: {elapsed:.2f}s")
 
-        if kmeans is not None and sil > best_score:
-            best_n_clusters, best_score, best_model = n_clusters, sil, kmeans
+        if model is not None and sil > best_score:
+            best_score = sil
+            best_model = model
+            best_param_combo = param
 
-    return best_n_clusters, best_model, best_score, all_metrics
+    return best_param_combo, best_model, best_score, all_metrics
 
-def train_tokenizer(data, range_n_clusters, knn_neighbors=5):
+def train_tokenizer(data, range_n_clusters, knn_neighbors=5, clusteringAlgorithm="KMEANS", eps_list=None):
     """Train a tokenizer using K-means and k-NN."""
 
-    n_clusters, kmeans, best_silhouette, all_metrics = find_optimal_clusters(data, range_n_clusters)
+    best_param_combo, best_model, best_silhouette, all_metrics = find_optimal_clusters(data, range_n_clusters, clusteringAlgorithm, eps_list)
+
+    if clusteringAlgorithm == "KMEANS":
+        n_clusters = best_param_combo[0]
+    else:
+        cluster_labels = best_model.labels_
+        n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+
     print(f"\nOptimal number of clusters: {n_clusters}")
 
-    tokens_from_kmeans = kmeans.predict(data)
-    print(f"Tokens assigned to first 5 data points: {tokens_from_kmeans[:5]}")  # Print first 5 token assignments
+    if hasattr(best_model, "predict"):
+        tokens_from_kmeans = best_model.predict(data)
+        print(f"Tokens assigned to first 5 data points: {tokens_from_kmeans[:5]}")  # Print first 5 token assignments
+    else:
+        tokens_from_kmeans = best_model.labels_
+        print(f"Tokens assigned to first 5 data points: {tokens_from_kmeans[:5]}")
+
 
     # Step 3: Train k-NN classifier
     knn = KNeighborsClassifier(n_neighbors=knn_neighbors).fit(data, tokens_from_kmeans)
-    return kmeans, knn, tokens_from_kmeans, n_clusters, best_silhouette, all_metrics
+    return best_model, knn, tokens_from_kmeans, n_clusters, best_silhouette, all_metrics
 
 # ----- -----     SKIP GRAM     ----- -----
 def generate_skipgram_pairs(sequence, vocab_size, window_size=2):
@@ -229,6 +263,9 @@ def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6
         pairs, _ = skipgrams(sequence, vocabulary_size=vocab_size, window_size=window_size, negative_samples=0)
         all_pairs.extend(pairs)
 
+    all_pairs = np.array(all_pairs, dtype=np.int32)
+    if all_pairs.ndim != 2 or all_pairs.shape[1] != 2:
+        raise ValueError(f"Invalid shape for skip-gram pairs: {all_pairs.shape}. Expected shape (N, 2).")
     all_pairs = tf.convert_to_tensor(all_pairs, dtype=tf.int32)
     input_tokens = all_pairs[:, 0]
     context_tokens = all_pairs[:, 1]
@@ -359,7 +396,7 @@ def group_tokens_by_conversation(tokens, origins):
         conv_token_map[conv_id].append(token)
     return conv_token_map
 
-def slice_timeseries_rowwise(data, lengths, window_length, stride):
+def slice_timeseries_rowwise(data, lengths, window_length, stride, pad_short=True):
     segments = []
     origins = []
 
@@ -367,8 +404,13 @@ def slice_timeseries_rowwise(data, lengths, window_length, stride):
         row_values = row.values[:lengths[idx]]  # only use the real part
 
         if len(row_values) < window_length:
-            print(f"⚠️ Skipping sample {idx} — too short (length={len(row_values)}, needed={window_length})")
-            continue  # Skip this sample entirely
+            if pad_short:
+                padded = np.pad(row_values, (0, window_length - len(row_values)), mode='constant')
+                segments.append(padded)
+                origins.append(idx)
+            else:
+                print(f"⚠️ Skipping sample {idx} — too short (length={len(row_values)}, needed={window_length})")
+            continue
 
         for i in range(0, len(row_values) - window_length + 1, stride):
             segment = row_values[i:i + window_length]
@@ -438,7 +480,7 @@ def mainLogic():
 
     # Train the tokenizer
     kmeans_model, knn_model, tokens_from_kmeans, n_clusters, best_silhouette, all_metrics = train_tokenizer(
-        segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"])
+        segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"], clusteringAlgorithm=config['clusteringAlgorithm'], eps_list = config['dbscan_eps_list'])
     best_silhouette = np.round(best_silhouette, 4)
 
     # Token assignment step — we train a classifier (k-NN) on the clustered segments
@@ -586,7 +628,10 @@ def mainLogic():
                      kmeans_model, config["random_state"], "no", **name_kwargs)
 
     filenamePrefix_SGLossvsEpoch = "SGLossvsEpoch"
-    epochBestWeights = epochEarlyStopped - config['early_stopping_patience']
+    if epochEarlyStopped is not None:
+        epochBestWeights = epochEarlyStopped - config['early_stopping_patience']
+    else:
+        epochBestWeights = None
     plotSkipgramLossVsEpoch(skipgram_history, filenamePrefix_SGLossvsEpoch, filepath_data, subfoldername, formatted_datetime,
                             setType="NO", epochEarlyStopped=epochEarlyStopped, epochBestWeights=epochBestWeights, **name_kwargs)
 
@@ -603,41 +648,60 @@ def mainLogic():
     dataType = "Embeddings"
     analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embeddings, dataType, save=True, **PlothelpDict)
 
+    agreement_train = compare_token_assignments("Train", segments_train, kmeans_model, knn_model, save=True, **PlothelpDict)
+    agreement_val = compare_token_assignments("Validation", segments_val, kmeans_model, knn_model, save=True, **PlothelpDict)
+    agreement_test = compare_token_assignments("Test", segments_test, kmeans_model, knn_model, save=True, **PlothelpDict)
+
 
 
 filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
-filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-27_00-13-51.npy"
+filepath_data = "Pitt_data_mfcc_sR88200_hopL1024_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-27_08-31-38.npy"
+filepath_data = "Pitt_data_audio_features_sR44100_hopL512_summarAudFFalse_nFFT1024_resampleTrue_2025-06-04_16-37-39.npy"
+filepath_data = "Pitt_data_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-10-41.npy"
+filepath_data = "Pitt_data_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-54-48.npy"
+filepath_data = "Pitt_data_raw_sR44100_frameL1024_resampleTrue_2025-06-05_21-44-17.npy"
+filepath_data = "Pitt_data_raw_sR88200_resampleTrue10000_2025-06-05_22-07-47.npy"
+#filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy"
 
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summary_nMFCC13_nFFT512_2025-05-03_15-09-33.csv"
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL256_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT512_2025-05-03_20-05-09.csv"
 filepath_labels= "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summaryFalse_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-04_00-05-37.csv"
-filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-27_00-13-51.csv"
+filepath_labels = "Pitt_labels_mfcc_sR88200_hopL1024_mfcc_summaryTrue_use_mfcc_deltasTrue_nMFCC13_nFFT2048_2025-05-27_08-31-38.csv"
+filepath_labels = "Pitt_labels_audio_features_sR44100_hopL512_summarAudFFalse_nFFT1024_resampleTrue_2025-06-04_16-37-39.csv"
+filepath_labels = "Pitt_labels_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-10-41.csv"
+filepath_labels = "Pitt_labels_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-54-48.csv"
+filepath_labels = "Pitt_labels_raw_sR44100_frameL1024_resampleTrue_2025-06-05_21-44-17.csv"
+filepath_labels = "Pitt_labels_raw_sR88200_resampleTrue10000_2025-06-05_22-07-47.csv"
+#filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv"
 
 # Configuration dictionary to store hyperparameters and settings
 config = {
- #   "n_clusters_list": [150, 350, 500, 700, 1000, 1500], #[50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 1000, 1500, 2000, 3000, 5000],
-  #  "n_clusters_list": [10, 50],# 200, 250, 300, 350],
-#    "n_clusters_list": [6, 8, 16, 32, 64, 128, 160, 192, 256, 300, 350, 500, 700, 1000, 1500, 3000],
-    "n_clusters_list": [2, 4],#, 8, 16, 24, 32, 64, 128, 256, 300, 350], #500, 700, 1000],
-    "knn_neighbors": 4,        # Number of neighbors for k-NN - 50
-    "window_size": 2048,    # 2       # Window size for sequence generation - 10
-    "stride": 1024,          # 8      # Stride for sequence generation - 1
-    "embedding_dim": 50,       # Dimension of word embeddings - 300
-    "window_size_skipgram": 6, # - 20
+    "clusteringAlgorithm": "KMEANS",
+    "dbscan_eps_list": [0.1, 0.5, 0.7, 1.0],
+ #   "n_clusters_list": [2, 6],#, 8, 12, 16, 24, 32, 48],# 64, 78, 96, 128, 196, 256, 512],
+    "n_clusters_list": [4, 6, 8, 12, 16],
+ #   "n_clusters_list": [2, 4, 8, 16, 24, 32, 64, 128, 256, 300, 350], #500, 700, 1000],
+    "knn_neighbors": 3,        # Number of neighbors for k-NN - 50
+    "window_size": 512,    # 2       # Window size for sequence generation - 10
+    "stride": 256,          # 8      # Stride for sequence generation - 1
+    "embedding_dim": 3,       # Dimension of word embeddings - 300
+    "window_size_skipgram": 40, # - 20
     "epochs": 50,                # Number of training epochs
-    "num_negative_samples": 5,
-    "optimizer_skipgram": 'adam', # Adagrad in nalmpantis paper
+    "num_negative_samples": 10,
+    "optimizer_skipgram": 'adagrad', # Adagrad in nalmpantis paper
     "skipgram_loss": "NCE", # "sparse_categorical_crossentropy", "NCE
     "sequenceEmbeddingAveragingMethod": "Average", # "Average", "Weighted"
-    "batch_size": 64,          # Batch size for training
+    "batch_size": 128,          # Batch size for training
     "perplexity": 30,           # t-SNE perplexity
     "random_state": 42,         # Random state for reproducibility
     "n_init": 50, #default 10 in kmeans. use 50 to help avoid collapse
     "output_folder": "02_Embeddings",  # Folder for saving embeddings
     "enable_scaling": True,
-    "scaler": StandardScaler,  # MinMaxScaler(), StandardScaler(), "noScaling"
+    "scaler": MinMaxScaler,  # MinMaxScaler(), StandardScaler(), "noScaling"
     "rowWiseScaling": True,
     "early_stopping": True,
     "early_stopping_patience": 3,

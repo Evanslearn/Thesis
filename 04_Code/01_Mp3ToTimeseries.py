@@ -210,42 +210,88 @@ def segment_and_extract_mfcc_means(audio, sr, config, window_sec=2.0, hop_sec=1.
 
     return np.concatenate(features)  # shape = (n_segments × n_mfcc,)
 
-
-
-def extract_audio_features(audio, sr, n_mfcc=13, frame_length=2048, hop_length=512, verbose=False):
+def extract_audio_features(audio, sr, n_mfcc=13, frame_length=2048, hop_length=512, features_summary=False, resample=False, resample_length=50,
+                           use_mfcc_deltas=True, verbose=False):
     if len(audio) < hop_length * 2:
         raise ValueError(f"Audio too short for hop_length={hop_length} (len={len(audio)})")
 
     try:
-        mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, n_fft=frame_length, hop_length=hop_length)
+        # ---- BASE FEATURES ----
+        mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, n_fft=frame_length, hop_length=hop_length)
         spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=sr, n_fft=frame_length, hop_length=hop_length)
         chroma = librosa.feature.chroma_stft(y=audio, sr=sr, n_fft=frame_length, hop_length=hop_length)
 
-        # Sanity checks
-        if mfccs.shape[1] < 2 or spectral_centroid.shape[1] < 2 or chroma.shape[1] < 2:
-            raise ValueError(f"Insufficient frames: MFCC={mfccs.shape}, Centroid={spectral_centroid.shape}, Chroma={chroma.shape}")
+        spectral_bandwidth = librosa.feature.spectral_bandwidth(y=audio, sr=sr, n_fft=frame_length, hop_length=hop_length)
+        spectral_rolloff = librosa.feature.spectral_rolloff(y=audio, sr=sr, n_fft=frame_length, hop_length=hop_length)
+        zcr = librosa.feature.zero_crossing_rate(y=audio, frame_length=frame_length, hop_length=hop_length)
+        rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)
 
-        # Mean-pool across time axis
-        mfccs_mean = np.mean(mfccs, axis=1)
-        centroid_mean = np.mean(spectral_centroid, axis=1)
-        chroma_mean = np.mean(chroma, axis=1)
+        # Align feature lengths
+        T = mfcc.shape[1]
+        spectral_centroid = librosa.util.fix_length(data=spectral_centroid, size=T, axis=-1)
+        chroma = librosa.util.fix_length(data=chroma, size=T, axis=-1)
+        spectral_bandwidth = librosa.util.fix_length(data=spectral_bandwidth, size=T, axis=-1)
+        spectral_rolloff = librosa.util.fix_length(data=spectral_rolloff, size=T, axis=-1)
+        zcr = librosa.util.fix_length(data=zcr, size=T, axis=-1)
+        rms = librosa.util.fix_length(data=rms, size=T, axis=-1)
 
-        # Final feature vector
-        features = np.concatenate([mfccs_mean, centroid_mean, chroma_mean])
 
-        # Check for NaNs or infs
-        if np.isnan(features).any() or np.isinf(features).any():
-            raise ValueError("Feature vector contains NaN or Inf")
+        if features_summary:
+            # ---- SUMMARY MODE: mean + std ----
+            mfcc_mean = np.mean(mfcc, axis=1)
+            mfcc_std = np.std(mfcc, axis=1)
 
-     #   if verbose:
-     #       print(f"✅ Feature vector extracted: shape={features.shape}")
+            features = [mfcc_mean, mfcc_std]
 
-        return features
+            if use_mfcc_deltas and mfcc.shape[1] >= 5:
+                delta = librosa.feature.delta(mfcc)
+                delta2 = librosa.feature.delta(mfcc, order=2)
+
+                delta_mean = np.mean(delta, axis=1)
+                delta_std = np.std(delta, axis=1)
+                delta2_mean = np.mean(delta2, axis=1)
+                delta2_std = np.std(delta2, axis=1)
+
+                features.extend([delta_mean, delta_std, delta2_mean, delta2_std])
+
+            # Add spectral and chroma summary
+            features.extend([
+                np.mean(spectral_centroid, axis=1), np.std(spectral_centroid, axis=1),
+                np.mean(chroma, axis=1), np.std(chroma, axis=1),
+                np.mean(spectral_bandwidth, axis=1), np.std(spectral_bandwidth, axis=1),
+                np.mean(spectral_rolloff, axis=1), np.std(spectral_rolloff, axis=1),
+                np.mean(zcr, axis=1), np.std(zcr, axis=1),
+                np.mean(rms, axis=1), np.std(rms, axis=1),
+            ])
+
+            features = np.concatenate(features)  # final shape: [2 × (mfccs + deltas + centroid + chroma)]
+            return features
+        else:
+            # ---- FULL TIME SERIES MODE ----
+            if use_mfcc_deltas and mfcc.shape[1] >= 5:
+                delta = librosa.feature.delta(mfcc)
+                delta2 = librosa.feature.delta(mfcc, order=2)
+                mfcc = np.concatenate([mfcc, delta, delta2], axis=0)
+
+            features = np.concatenate([
+                mfcc, spectral_centroid, chroma,
+                spectral_bandwidth, spectral_rolloff, zcr, rms
+            ], axis=0)
+
+            if resample:
+                features = np.array([
+                    np.interp(np.linspace(0, 1, resample_length),
+                              np.linspace(0, 1, features.shape[1]),
+                              features[i]) for i in range(features.shape[0])
+                ])
+            features = features.flatten()
+            return features
 
     except Exception as e:
         if verbose:
             print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
         raise e
+
 
 
 def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
@@ -300,10 +346,26 @@ def logicForPitt(file_path_caseName = "Pitt"):
 
     metadata_ALL = extract_duration_and_samplerate(labeled_files)
     df_metadata = pd.DataFrame(metadata_ALL, columns=["filename", "duration", "sample_rate", "label"])
+
+    # Filter based on duration percentile
+    keep_percentile = config.get("keep_duration_percentile", 1.0)
+    if keep_percentile < 1.0:
+        cutoff = df_metadata["duration"].quantile(keep_percentile)
+        print(f"📉 Filtering to keep only {keep_percentile * 100:.1f}% of shortest files (cutoff = {cutoff:.2f} sec)")
+
+        original_count = len(df_metadata)
+        df_metadata = df_metadata[df_metadata["duration"] <= cutoff].reset_index(drop=True)
+        filtered_count = len(df_metadata)
+        print(f"Filtered out {original_count - filtered_count} files (longest {100 - keep_percentile * 100:.1f}%)")
+    # Filter original labeled_files list to match filtered df_metadata
+    filtered_filenames = set(df_metadata["filename"])
+    labeled_files = [(f, l) for (f, l) in labeled_files if os.path.basename(f) in filtered_filenames]
+    print(f"After filtering: {len(labeled_files)} files kept out of original {len(metadata_ALL)}")
+
     stats_duration = plot_colName_distributions(df_metadata, colName="duration", title="Duration Distributions by Label")
     stats_sampleRate = plot_colName_distributions(df_metadata, colName="sample_rate", title="Sample Rate Distributions by Label")
 
-    sample_rate, frame_length, hop_length, threshold, apply_rms_clipping_global, apply_rms_clipping_mfcc, mfcc_summary, use_mfcc_deltas = (
+    sample_rate, frame_length, hop_length, threshold, apply_rms_clipping_global, apply_rms_clipping_mfcc, mfcc_summary, use_mfcc_deltas, features_summary = (
         config["sample_rate"],
         config["frame_length"],
         config["hop_length"],
@@ -311,7 +373,8 @@ def logicForPitt(file_path_caseName = "Pitt"):
         config["apply_rms_clipping_global"],
         config["apply_rms_clipping_mfcc"],
         config["mfcc_summary"],
-        config["use_mfcc_deltas"]
+        config["use_mfcc_deltas"],
+        config["features_summary"]
     )
     n_mfcc = config['n_mfcc'] # 13
 
@@ -343,7 +406,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
             if feature_type == "raw":
                 features = audio  # raw waveform
                 # Plot raw waveform
-                plot_audio_feature(audio, sr, feature_type=feature_type)
+        #        plot_audio_feature(audio, sr, feature_type=feature_type)
             elif feature_type == "mfcc":
                 features = extract_mfcc_timeseries(audio, sr, n_mfcc=n_mfcc, frame_length=frame_length, hop_length=hop_length, apply_rms_clipping=apply_rms_clipping_mfcc, threshold=threshold,
                                                    mfcc_summary=mfcc_summary, use_mfcc_deltas=use_mfcc_deltas, resample=resample, resample_length=resample_length)
@@ -352,13 +415,19 @@ def logicForPitt(file_path_caseName = "Pitt"):
     #            mfcc_for_plot = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=config["n_mfcc"], hop_length=hop_length, n_fft=frame_length)
     #            plot_audio_feature(mfcc_for_plot, sr, feature_type=feature_type, hop_length=hop_length)
             elif feature_type == "audio_features":
-                features = extract_audio_features(audio, sr, frame_length=frame_length, hop_length=hop_length, verbose=False)
+                features = extract_audio_features(audio, sr, n_mfcc=n_mfcc, frame_length=frame_length, hop_length=hop_length,
+                                                  features_summary=features_summary,
+                                                  resample=resample,
+                                                  resample_length = resample_length,
+                                                  use_mfcc_deltas=use_mfcc_deltas,
+                                                  verbose=config.get("verbose")
+                )
             else:
                 raise ValueError(f"Unknown feature type: {feature_type}")
 
             # Optional resampling (for raw or feature vectors)
-            if resample and not mfcc_summary:
-                output_timeseries = scale_and_resample_timeseries(features)
+            if resample and not mfcc_summary and feature_type != "audio_features":
+                output_timeseries = scale_and_resample_timeseries(features, resample_length)
             else:
                 output_timeseries = features  # keep original
 
@@ -383,7 +452,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
                 ]
 
                 # Add window info IF the feature_type is one of these
-                if feature_type in ["raw", "mfcc", "audio_features"]:
+                if feature_type in ["mfcc", "audio_features"]:
                     n_windows, window_duration_sec, stride_duration_sec = count_windows_with_duration(
                         audio, window_size=frame_length, stride=hop_length, sr=sr
                     )
@@ -445,17 +514,19 @@ def logicForPitt(file_path_caseName = "Pitt"):
         filenameVars += f"_hopL{hop_length}"
 
     if feature_type == "mfcc":
-        filenameVars += f"_mfcc_summary{mfcc_summary}"
-        filenameVars += f"_use_mfcc_deltas{use_mfcc_deltas}"
+        filenameVars += f"_summaryMFCC{mfcc_summary}"
+        filenameVars += f"_mfccDeltas{use_mfcc_deltas}"
         filenameVars += f"_nMFCC{n_mfcc}"
 
     if feature_type in ["mfcc", "audio_features"]:
+        filenameVars += f"_summarAudF{features_summary}"
         filenameVars += f"_nFFT{frame_length}"
-    elif feature_type == "raw":
+    elif feature_type == "raw" and apply_rms_clipping_global:
         filenameVars += f"_frameL{frame_length}"
 
     if config['resampleTimeseries']:
         filenameVars += f"_resample{config['resampleTimeseries']}"
+        filenameVars += f"{resample_length}"
 
     filenameVars += "_"
  #   printLabelCounts(valid_labels)
@@ -470,16 +541,18 @@ def logicForPitt(file_path_caseName = "Pitt"):
 
 config = {
     "sample_rate": 44100,
-    "frame_length": 2048,
-    "hop_length": 1024,
+    "frame_length": 4096,
+    "hop_length": 2048,
     "threshold": 0.00,
+    "keep_duration_percentile": 0.95,
     "feature_type": "mfcc",  # Options: "raw", "mfcc", "audio_features"
     "resampleTimeseries": False,
-    "resample_length": 1024,
+    "resample_length": 10000,
     "apply_rms_clipping_global": False,
     "apply_rms_clipping_mfcc": False,
+    "features_summary": False,
     "mfcc_summary": False,  # True for mean+std, False for flatten
-    "use_mfcc_deltas": False,  # Add Δ and ΔΔ features (summary only)
+    "use_mfcc_deltas": True,  # Add Δ and ΔΔ features (summary only)
     "n_mfcc": 13, #13
     "verbose": True
 }

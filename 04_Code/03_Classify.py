@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import time
@@ -93,7 +94,7 @@ CONFIG = {
     "loss": "binary_crossentropy",
     "metrics": ['accuracy', Precision(), Recall(), f1_score_keras], # metrics = ['mse', 'mae', 'accuracy'],
     "enable_scaling": True,
-    "scaler": MinMaxScaler(), # None, MinMaxScaler(), StandardScaler()
+    "scaler": StandardScaler(), # None, MinMaxScaler(), StandardScaler()
     "optimizer": Adam,
     "momentum": 0.9, # for SGD
     "units": {
@@ -115,13 +116,14 @@ CONFIG = {
     "recurrent_dropout": 0.0, # 0.2
     "activation_dense": "relu",
     "dropout": 0.4,
-    "kernel_regularizer_dense": l2(0.001) # None, l2(0.001)
+    "kernel_regularizer_dense": l2(0.001), # None, l2(0.001),
+    "lr_min": 0.0001, # 0.001, 0.035
+    "lr_max": 0.1, # 0.01
+    "lr_distinct": 30 # 10
 }
 
-lr_min = 0.0001 # 0.001, 0.035
-lr_max = 0.1 # 0.01
-lr_distinct = 30 # 10
-learning_rate = np.linspace(lr_min, lr_max, num=lr_distinct).tolist()
+
+learning_rate = np.linspace(CONFIG['lr_min'], CONFIG['lr_max'], num=CONFIG['lr_distinct']).tolist()
 
 
 #embeddingsPath = "/02_Embeddings/"
@@ -135,6 +137,14 @@ filepath_data = "Pitt_data_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL512_mfcc_summary_nFFT2048_2025-05-02_23-43-49.csv"
 filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.npy"
 filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-20_01-24-12.csv"
+filepath_data = "Pitt_data_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-27_00-13-51.npy"
+filepath_labels = "Pitt_labels_mfcc_sR44100_hopL1024_mfcc_summaryFalse_use_mfcc_deltasFalse_nMFCC13_nFFT2048_2025-05-27_00-13-51.csv"
+
+filepath_data = "Pitt_data_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-10-41.npy"
+filepath_labels = "Pitt_labels_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-10-41.csv"
+
+#filepath_data = "Pitt_data_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-54-48.npy"
+#filepath_labels = "Pitt_labels_audio_features_sR44100_hopL512_summarAudFTrue_nFFT1024_2025-06-04_18-54-48.csv"
 
 if CONFIG['split_options']:
     import Help_03_Paths as fp
@@ -182,15 +192,29 @@ def loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels
     return data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS
 if CONFIG["split_options"][0] == "YES":
     data, labels, fp.FILEPATH_DATA, fp.FILEPATH_LABELS = loadRawDataForSplitting_whenWithoutSignal2Vec(filepath_data, filepath_labels)
+
+    fp.FILEPATH_DATA_TRAIN = None
+    fp.FILEPATH_DATA_VAL = None
+    fp.FILEPATH_DATA_TEST = None
+    fp.FILEPATH_LABELS_TRAIN = None
+    fp.FILEPATH_LABELS_VAL = None
+    fp.FILEPATH_LABELS_TEST = None
+    fp.FILEPATH_INDICES = None
+    fp.FILEPATH_INDICES_TRAIN = None
+    fp.FILEPATH_INDICES_VAL = None
+    fp.FILEPATH_INDICES_TEST = None
 else:
     data = labels = None  # Not needed when using pre-split
 
 val_ratio = 1
 
-indices_step02_train = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_TRAIN, "indicesTrain")
-indices_step02_val = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_VAL, "indicesVal")
-indices_step02_test = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_TEST, "indicesTest")
-indices_step02 = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES, "indicesAll").to_numpy()
+if CONFIG["split_options"][0] != "YES":
+    indices_step02_train = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_TRAIN, "indicesTrain")
+    indices_step02_val = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_VAL, "indicesVal")
+    indices_step02_test = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES_TEST, "indicesTest")
+    indices_step02 = readCsvAsDataframe(fp.FOLDER_PATH, fp.FILEPATH_INDICES, "indicesAll").to_numpy()
+else:
+    indices_step02_train = indices_step02_val = indices_step02_test = indices_step02 = None
 
 def returnDatasplit(needSplitting = "NO"):
     global val_ratio
@@ -338,6 +362,14 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
 
     return combined_df, pivot_df
 
+def get_class_probabilities(clf, X):
+    if hasattr(clf, "predict_proba"):
+        return clf.predict_proba(X)[:, 1]
+    elif hasattr(clf, "decision_function"):
+        return sigmoid(clf.decision_function(X))
+    else:
+        return clf.predict(X).astype(float)
+
 def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state, output_txt=None, append=False):
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000, random_state=random_state),
@@ -347,13 +379,24 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
     }
 
     all_outputs = []
+    all_outputs_str = []
 
     for name, clf in models.items():
         buffer = StringIO()
+
         clf.fit(X_train, Y_train)
 
         print(f"\n===== {name} =====", file=buffer)
-        print(f"\n🔍 Training: {name}", file=buffer)
+        print(f"\n Training: {name}", file=buffer)
+
+        predictions_per_case = {
+            "train": clf.predict(X_train),
+            "val": clf.predict(X_val),
+            "test": clf.predict(X_test),
+            "prob_train": get_class_probabilities(clf, X_train),
+            "prob_val": get_class_probabilities(clf, X_val),
+            "prob_test": get_class_probabilities(clf, X_test)
+        }
 
         # For combined report
         combined_reports = []
@@ -368,7 +411,7 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
             acc = report.get("accuracy", 0)
             cm = confusion_matrix(Y, preds)
 
-            print(f"\n📊 {set_name.title()} Performance for {name}:", file=buffer)
+            print(f"\n {set_name.title()} Performance for {name}:", file=buffer)
             print(classification_report(Y, preds, digits=2), file=buffer)
             print(f"{set_name.title()} Accuracy: {acc:.4f}", file=buffer)
             print("Confusion Matrix:", file=buffer)
@@ -385,19 +428,27 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
         combined_df = combined_df.reset_index().rename(columns={"index": "label"})
         combined_df = combined_df.round(2)
 
-        print(f"\n📋 Combined classification report for {name}:", file=buffer)
+        print(f"\n Combined classification report for {name}:", file=buffer)
         print(combined_df.to_string(index=False), file=buffer)
 
-        all_outputs.append(buffer.getvalue())
+        model_output = {
+            "name": name,
+            "combined_report": combined_df,
+            "predictions": predictions_per_case,
+            "raw_text": buffer.getvalue()
+        }
+        all_outputs.append(model_output)  # Keep the full model info (dict) for later use
+        all_outputs_str.append(buffer.getvalue())  # Separate list for writing text
         buffer.close()
 
     # Save to text file
     if output_txt:
         mode = "a" if append else "w"
-        with open(output_txt, mode) as f:
-            for output in all_outputs:
-                f.write(output)
+        with open(output_txt, mode, encoding="utf-8") as f:
+            for output_str in all_outputs_str:
+                f.write(output_str)
                 f.write("\n" + "=" * 100 + "\n")
+            json.dump(all_outputs, f, indent=4, default=str)
         print(f"\n📁 Saved classification results to: {output_txt}")
 
 def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
@@ -515,13 +566,13 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
         print(" ----- CLASSICAL MODELS -----\n")
         print(" ----- NOT NORMALIZED -----")
         # Write non-normalized results
-        with open(output_txt, "w") as f:
-            f.write("==== 📊 RESULTS: NON-NORMALIZED DATA ====\n\n")
+        with open(output_txt, "w", encoding="utf-8") as f:
+            f.write("==== RESULTS: NON-NORMALIZED DATA ====\n\n")
         train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_test, random_state=random_state, output_txt=output_txt, append=True)
         print(" ----- NORMALIZED ----- ")
         # Write normalized results
-        with open(output_txt, "a") as f:
-            f.write("\n\n==== 📊 RESULTS: NORMALIZED DATA ====\n\n")
+        with open(output_txt, "a", encoding="utf-8") as f:
+            f.write("\n\n==== RESULTS: NORMALIZED DATA ====\n\n")
         train_and_evaluate_classifiers(X_train_normalized, Y_train, X_val_normalized, Y_val, X_test_normalized, Y_test, random_state=random_state, output_txt=output_txt, append=True)
 
         methods = [PCA, TSNE, umap.UMAP]
@@ -642,6 +693,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     val_predictions = model.predict(X_val_normalized)
     val_preds_binary = (val_predictions.flatten() >= 0.5).astype(int)
 
+    cm_train_raw, cm_train_norm = calculateAndReturnConfusionMatrix(Y_train, train_preds_binary)
     cm_val_raw, cm_val_norm = calculateAndReturnConfusionMatrix(Y_val, val_preds_binary)
     print("Validation Confusion Matrix (Raw):")
     print(cm_val_raw)
@@ -673,7 +725,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
 
     saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, rnn_neural_time, test_metrics, filepathsAll, predictions.flatten(), Y_test.flatten(),
                               fp.FILEPATH_DATA, figureNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm,
-                                val_metrics, Y_val.flatten(), val_predictions.flatten(), cm_val_raw, cm_val_norm,
+                                val_metrics, Y_val.flatten(), val_predictions.flatten(), cm_val_raw, cm_val_norm, cm_train_raw, cm_train_norm,
                                 Y_train, train_preds_binary, Y_val, val_preds_binary, Y_test, preds_binary)
     plotTrainValMetrics(history, fp.FILEPATH_DATA, figureNameParams, epochEarlyStopped, epochBestWeights)
     plotAndSaveConfusionMatrix(cm_val_raw, cm_val_norm, fp.FILEPATH_DATA, figureNameParams + "_VAL")

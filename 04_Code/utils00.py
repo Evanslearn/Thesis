@@ -449,7 +449,7 @@ def print_classification_report(y_true, y_pred_binary, label, csv_file=None, dec
 
 def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer, training_time, test_metrics, filepathsAll, predictions, actual_labels,
                               filepath_data, fileNameParams, ratio_0_to_1_ALL, cosineMetrics, cm_raw, cm_norm,
-                                val_metrics, Y_true_val, Y_pred_val, cm_val_raw, cm_val_norm,
+                                val_metrics, Y_true_val, Y_pred_val, cm_val_raw, cm_val_norm, cm_train_raw, cm_train_norm,
                                 Y_train, train_preds_binary, Y_val, val_preds_binary, Y_test, preds_binary):
 
     filenameFull = returnFileNameToSave(filepath_data, fileNameParams, imageflag="false")
@@ -532,6 +532,15 @@ def saveTrainingMetricsToFile03(config, history, model, learning_rate, optimizer
             f.write(f"For i = {i}, we have:\n")
             f.write(f"Y_predictions[i]     = {predictions[i]}\n")
             f.write(f"Y_test_normalized[i] = {actual_labels[i]}\n\n")
+
+        # --- CONF MATRIX TRAIN ---
+        f.write("\nCONFUSION MATRIX (Train):\n")
+        df_conf = pd.DataFrame(cm_train_raw)
+        df_conf.to_csv(f, index=False);
+        f.write("\n")
+        df_conf = pd.DataFrame(cm_train_norm)
+        df_conf.to_csv(f, index=False, header=True, float_format="%.3f");
+        f.write("\n")
 
         # --- Save Validation Predictions ---
         f.write("\nValidation Set Metrics:\n")

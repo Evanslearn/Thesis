@@ -213,9 +213,35 @@ def plot_clustering_metrics(metrics_dict, filenamePrefix, filepath_data, subfold
 
     plt.tight_layout()
   #  plt.show()
-
     saveFigure02(fig, filenamePrefix, filepath_data, subfoldername, formatted_datetime, setType, **kwargs)
 
+def save_fig(save, fig, filenamePrefix, **PlothelpDict):
+    if save:
+        saveFigure02(fig, filenamePrefix, PlothelpDict['filepath_data'], PlothelpDict['subfoldername'], PlothelpDict['formatted_datetime'], PlothelpDict['setType'], **PlothelpDict['name_kwargs'])
+
+# ----- 02 -----
+def compare_token_assignments(name, segments, kmeans_model, knn_model, plot=True, save=True, **PlothelpDict):
+
+    tokens_kmeans = kmeans_model.predict(segments)
+    tokens_knn = knn_model.predict(segments)
+
+    agreement = np.mean(tokens_kmeans == tokens_knn)
+    print(f"🔍 Agreement ({name}): {agreement:.2%} ({np.sum(tokens_kmeans == tokens_knn)} / {len(tokens_kmeans)})")
+
+    if plot:
+        fig = plt.figure(figsize=(12, 4))
+        plt.plot(tokens_kmeans, label="KMeans Tokens", alpha=0.7)
+        plt.plot(tokens_knn, label="KNN Tokens", alpha=0.7)
+        plt.title(f"{name} — Token Assignment (KMeans vs KNN)")
+        plt.legend()
+        plt.xlabel("Window Index")
+        plt.ylabel("Token ID")
+        plt.grid(True)
+        plt.tight_layout()
+  #      plt.show()
+        save_fig(save, fig, f"{name}", **PlothelpDict)
+
+    return agreement
 
 # ----- 02 -----
 def plot_token_waveforms(windows, labels, token_id, sample_rate=11025, n_samples=5):
@@ -376,10 +402,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial.distance import pdist
 
 def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embeddings, dataType, save=False, **PlothelpDict):
-    def save_fig(fig, filenamePrefix):
-        if save:
-            saveFigure02(fig, filenamePrefix, PlothelpDict['filepath_data'], PlothelpDict['subfoldername'], PlothelpDict['formatted_datetime'], PlothelpDict['setType'], **PlothelpDict['name_kwargs'])
-
     sets = [("Train", train_embeddings), ("Validation", val_embeddings), ("Test", test_embeddings)]
 
     # ---- PCA Explained Variance ----
@@ -411,7 +433,7 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
     axes[-1].set_xlabel("Number of Components")
     fig.suptitle("PCA Variance Across Sets", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    save_fig(fig, f"pca_variance{dataType}")
+    save_fig(save, fig, f"pca_variance{dataType}", **PlothelpDict)
     plt.show()
 
     # ---- Cosine Similarity Heatmaps (3x1 or 1x3 layout, shared colorbar, fewer ticks) ----
@@ -436,9 +458,20 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
         ax.set_xticklabels(tick_positions, rotation=0)
         ax.set_yticklabels(tick_positions, rotation=0)
 
+    # Safely adjust colorbar font size
+    if cbar_ax and hasattr(cbar_ax, 'collections') and cbar_ax.collections:
+        try:
+            cbar = cbar_ax.collections[0].colorbar
+            if cbar and hasattr(cbar, 'ax'):
+                cbar.ax.tick_params(labelsize=12)
+        except Exception as e:
+            print(f"⚠️ Skipping colorbar font update: {e}")
+    else:
+        print("⚠️ No colorbar to update")
+
     fig.suptitle("Cosine Similarity Heatmaps Across Sets", fontsize=14)
     fig.tight_layout(rect=[0, 0, 0.9, 0.95])
-    save_fig(fig, f"cosine_similarity{dataType}")
+    save_fig(save, fig, f"cosine_similarity{dataType}", **PlothelpDict)
     plt.show()
 
     # ---- Histogram of Pairwise Cosine Distances ----
@@ -459,7 +492,7 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
     axes[-1].set_xlabel("Cosine Distance")
     fig.suptitle("Cosine Distance Histograms Across Sets", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    save_fig(fig,f"cosine_distance_hist{dataType}")
+    save_fig(save, fig,f"cosine_distance_hist{dataType}", **PlothelpDict)
     plt.show()
 
 # ----- 02 and 03 -----
@@ -675,9 +708,15 @@ def plotTrainValMetrics(history, filepath_data, figureNameParams, epochEarlyStop
         axes[1, 1].legend()
         axes[1, 1].grid(True)
 
-    for i, ax in enumerate(axes.flatten()):
-  #      ax.legend(loc='upper right')
-        plotEarlyStopLines(epochEarlyStopped, epochBestWeights, training_loss, ax)
+    metric_lists = [
+        training_accuracy,
+        training_precision,
+        training_recall,
+        training_f1
+    ]
+
+    for ax, metric_vals in zip(axes.flatten(), metric_lists):
+        plotEarlyStopLines(epochEarlyStopped, epochBestWeights, metric_vals, ax)
 
     # Create custom legend handles
     custom_lines = []

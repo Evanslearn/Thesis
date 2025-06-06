@@ -77,8 +77,5 @@
 # 2025/05/03
 * 01 improve MFCC logic to allow more components and also allow splitting an mp3 into chunks and doing mfcc in each chunk, 02 plots to check embedding quality also early stopping plot lines
 
-# TO DO
-* Experiment with sampling of the mp3 files?
-* Experiment with windowing, and maybe use a larger window that 5 that I have used?
-* Experiment with Embedding feature count?
-* Experiment with classifier (NN architecture, hyperparameters) ?
+# 2025/06/06
+* Commit latest version that is cleaned up

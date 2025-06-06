@@ -174,24 +174,25 @@ def returnFileNames(search_dir, caseType, common_part):
 
 
 # Define the common part of the filenames
-#common_part = "scalerMinMax_sil0.5099_nCl150_nN15_wSize2_str1024_wSizeSG6_SGLossNCE_nEmbd200_2025-04-20_20-15-11"
-common_part = "scalerMinMax_sil0.6531_nCl100_nN50_wSize128_str128_wSizeSG10_SGLossNCE_nEmbd300_2025-04-21_00-33-13"
-common_part = "scalerStandard_sil0.6895_nCl6_nN15_wSize64_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-21_22-02-16"
-common_part = "scalerMinMax_sil0.4427_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-22_19-52-30"
-common_part = 'scalerMinMax_sil0.4472_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-24_02-41-33'
-common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd300_2025-04-24_21-48-39"
-common_part = "scalerMinMax_sil0.4367_nCl6_nN5_wSize1024_str512_wSizeSG6_SGLossNCE_nEmbd200_2025-04-26_16-35-37"
-#common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd100_2025-04-25_23-41-00"
-#common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd200_2025-04-26_02-55-48"
-common_part = "scalerMinMax_sil0.3961_nCl6_nN5_wSize4096_str2048_wSizeSG6_SGLossNCE_nEmbd300_2025-04-24_21-48-39"
-common_part = "scalerMinMax_sil0.4367_nCl6_nN5_wSize1024_str512_wSizeSG6_SGLossNCE_nEmbd200_2025-04-27_21-31-35"
-common_part = "scalerMinMax_sil0.3839_nCl6_nN4_wSize4_str2_wSizeSG6_SGLossNCE_nEmbd200_2025-05-03_00-09-27"
-common_part = "scalerMinMax_sil0.4549_nCl6_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd200_2025-05-03_00-57-09"
-common_part = "scalerMinMax_sil0.3625_nCl8_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd200_2025-05-03_01-31-55"
-common_part = "scalerStandard_sil0.5108_nCl6_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd200_2025-05-03_16-17-43"
-common_part = "scalerStandard_sil0.6477_nCl8_nN4_wSize8_str4_wSizeSG6_SGLossNCE_nEmbd5_2025-05-03_21-46-51"
-common_part = "scalerStandard_sil0.6723_nCl16_nN4_wSize36_str9_wSizeSG6_SGLossNCE_nEmbd5_2025-05-04_01-03-39"
 common_part = "scalerStandard_sil0.8626_nCl2_nN4_wSize2048_str1024_wSizeSG6_SGLossNCE_nEmbd50_2025-05-20_06-14-58"
+common_part = "scalerStandard_sil0.8828_nCl2_nN15_wSize1024_str512_wSizeSG6_SGLossNCE_nEmbd10_2025-05-26_01-56-07"
+#common_part = "scalerStandard_sil0.6581_nCl10_nN10_wSize4096_str2048_wSizeSG10_SGLossNCE_nEmbd5_2025-05-26_09-15-49"
+#common_part = "scalerMinMax_sil0.3099_nCl12_nN10_wSize8192_str4096_wSizeSG10_SGLossNCE_nEmbd5_2025-05-26_19-06-28"
+common_part = "scalerStandard_sil0.7057_nCl12_nN10_wSize16384_str8192_wSizeSG10_SGLossNCE_nEmbd5_2025-05-26_22-28-01"
+common_part = "scalerStandard_sil0.4245_nCl16_nN10_wSize6_str3_wSizeSG10_SGLossNCE_nEmbd5_2025-05-30_02-10-01"
+common_part = "scalerStandard_sil0.4245_nCl16_nN5_wSize6_str3_wSizeSG20_SGLossNCE_nEmbd5_2025-06-03_17-36-29"
+common_part = "scalerStandard_sil0.4245_nCl16_nN20_wSize6_str3_wSizeSG20_SGLossNCE_nEmbd5_2025-06-03_17-44-25"
+common_part = "scalerStandard_sil0.4245_nCl16_nN50_wSize6_str3_wSizeSG10_SGLossNCE_nEmbd5_2025-06-03_17-50-48"
+common_part = "scalerStandard_sil0.4245_nCl16_nN100_wSize6_str3_wSizeSG10_SGLossNCE_nEmbd5_2025-06-03_17-57-21"
+common_part = "scalerStandard_sil0.4046_nCl14_nN100_wSize12_str6_wSizeSG10_SGLossNCE_nEmbd5_2025-06-03_18-02-38"
+common_part = "scalerStandard_sil0.4238_nCl48_nN150_wSize6_str3_wSizeSG10_SGLossNCE_nEmbd5_2025-06-04_20-25-08"
+common_part = "scalerStandard_sil0.49_nCl32_nN50_wSize6_str3_wSizeSG10_SGLossNCE_nEmbd5_2025-06-04_21-46-29"
+common_part = "scalerMinMax_sil0.5267_nCl48_nN10_wSize6_str3_wSizeSG20_SGLossNCE_nEmbd5_2025-06-05_13-22-33"
+common_part = "scalerMinMax_sil0.3373_nCl2_nN30_wSize64_str32_wSizeSG40_SGLossNCE_nEmbd50_2025-06-05_22-26-13"
+common_part = "scalerMinMax_sil0.361_nCl2_nN30_wSize256_str128_wSizeSG40_SGLossNCE_nEmbd50_2025-06-06_01-10-39"
+common_part = "scalerMinMax_sil0.5167_nCl4_nN3_wSize512_str256_wSizeSG40_SGLossNCE_nEmbd3_2025-06-06_18-57-08"
+common_part = "scalerMinMax_sil0.2729_nCl4_nN3_wSize512_str256_wSizeSG40_SGLossNCE_nEmbd3_2025-06-06_21-15-49"
+
 
 search_dir = os.getcwd() + "/02_Embeddings"
 # Get the returned file names

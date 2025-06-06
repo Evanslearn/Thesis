@@ -32,13 +32,10 @@ def loadMp3AndConvertToTimeseries(file_path, sample_rate=None, verbose=False):
     return data, sr
 
 def analyze_audio(file_path, threshold, target_sr=44100):
-    # Load audio (converts to mono by default)
     y, sr = librosa.load(file_path, sr=target_sr)
 
-    # Duration in seconds
     duration = librosa.get_duration(y=y, sr=sr)
 
-    # Perform FFT to get frequency components
     fft = np.abs(np.fft.rfft(y))
     freqs = np.fft.rfftfreq(len(y), 1 / sr)
 
@@ -57,7 +54,7 @@ def extract_duration_and_samplerate(labeled_files, verbose=True):
 
     for idx, (mp3_file, label) in enumerate(labeled_files):
         if verbose and idx % 20 == 0:
-            print(f"🔍 Checking file #{idx}: {mp3_file}")
+            print(f"Checking file #{idx}: {mp3_file}")
 
         try:
             info = sf.info(mp3_file)
@@ -72,7 +69,7 @@ def extract_duration_and_samplerate(labeled_files, verbose=True):
             ))
 
         except Exception as e:
-            print(f"❌ Failed to read {mp3_file}: {e}")
+            print(f"Failed to read {mp3_file}: {e}")
             metadata.append((
                 os.path.basename(mp3_file),
                 "ERROR",
@@ -120,7 +117,6 @@ def returnRMSClippedSignal(signalToClip, frame_length, hop_length, threshold=0.0
         return frames[:, valid_mask].flatten()  # Flatten back
 
 def extract_mfcc_timeseries(audio, sr, n_mfcc, frame_length, hop_length, apply_rms_clipping=False, threshold=0.00, mfcc_summary=False, use_mfcc_deltas = False, resample=False, resample_length=40):
-    # Step 1: Compute MFCC
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length, n_fft=frame_length)
 
     if apply_rms_clipping:
@@ -187,7 +183,7 @@ def segment_audio_and_extract_mfccs(audio, sr, window_sec=2.0, hop_sec=1.0, conf
             )
             segments.append(mfcc_flat)
         except Exception as e:
-            print(f"⚠️ Skipping segment due to error: {e}")
+            print(f"Skipping segment due to error: {e}")
             continue
 
     return segments
@@ -208,7 +204,7 @@ def segment_and_extract_mfcc_means(audio, sr, config, window_sec=2.0, hop_sec=1.
         mfcc_mean = np.mean(mfcc, axis=1)
         features.append(mfcc_mean)
 
-    return np.concatenate(features)  # shape = (n_segments × n_mfcc,)
+    return np.concatenate(features)  # shape = (n_segments * n_mfcc,)
 
 def extract_audio_features(audio, sr, n_mfcc=13, frame_length=2048, hop_length=512, features_summary=False, resample=False, resample_length=50,
                            use_mfcc_deltas=True, verbose=False):
@@ -289,9 +285,8 @@ def extract_audio_features(audio, sr, n_mfcc=13, frame_length=2048, hop_length=5
 
     except Exception as e:
         if verbose:
-            print(f"❌ Feature extraction error: {type(e).__name__} - {e}")
+            print(f"Feature extraction error: {type(e).__name__} - {e}")
         raise e
-
 
 
 def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
@@ -313,18 +308,6 @@ def collect_labeled_files(file_path, valid_labels=("Control", "Dementia")):
 
 
 def count_windows_with_duration(audio, window_size, stride, sr):
-    """
-    Count number of windows and compute window duration.
-
-    Args:
-        audio (np.ndarray): 1D raw audio signal.
-        window_size (int): Window size in samples.
-        stride (int): Hop size (stride) in samples.
-        sr (int): Sample rate (Hz).
-
-    Returns:
-        tuple: (number of windows, window duration in seconds, stride duration in seconds)
-    """
     L = len(audio)
     n_windows = (L - window_size) // stride + 1
     window_duration_sec = window_size / sr
@@ -351,7 +334,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
     keep_percentile = config.get("keep_duration_percentile", 1.0)
     if keep_percentile < 1.0:
         cutoff = df_metadata["duration"].quantile(keep_percentile)
-        print(f"📉 Filtering to keep only {keep_percentile * 100:.1f}% of shortest files (cutoff = {cutoff:.2f} sec)")
+        print(f"Filtering to keep only {keep_percentile * 100:.1f}% of shortest files (cutoff = {cutoff:.2f} sec)")
 
         original_count = len(df_metadata)
         df_metadata = df_metadata[df_metadata["duration"] <= cutoff].reset_index(drop=True)
@@ -436,7 +419,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
             valid_labels.append(label)
             valid_files.append(mp3_file)
 
-            # ✅ STEP 4: Logging feature shape
+            #STEP 4: Logging feature shape
             if config.get("verbose"):
                 duration_sec = len(audio) / sr
                 shape = output_timeseries.shape
@@ -462,7 +445,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
 
                 # Build the basic stuff
                 line = (
-                    f"✅ {os.path.basename(mp3_file)} | SR: {sr:.2f} | Original SR: {full_sr} | MaxF: {max_freq:.2f} Hz | "
+                    f"{os.path.basename(mp3_file)} | SR: {sr:.2f} | Original SR: {full_sr} | MaxF: {max_freq:.2f} Hz | "
                     f"Dur: {duration_sec:.2f}s | Shape: {output_timeseries.shape} | Label: {label}"
                 )
 
@@ -476,7 +459,7 @@ def logicForPitt(file_path_caseName = "Pitt"):
                 print(line)
 
         except Exception as e:
-            print(f"❌ Error processing file {mp3_file}: {e}")
+            print(f"Error processing file {mp3_file}: {e}")
             continue
 
     total_timeseries_time = time.time() - start_time
@@ -552,7 +535,7 @@ config = {
     "apply_rms_clipping_mfcc": False,
     "features_summary": False,
     "mfcc_summary": False,  # True for mean+std, False for flatten
-    "use_mfcc_deltas": True,  # Add Δ and ΔΔ features (summary only)
+    "use_mfcc_deltas": True,  # Add Δ and ΔΔ features
     "n_mfcc": 13, #13
     "verbose": True
 }
@@ -579,7 +562,7 @@ def runLocalExperiment():
         data_files = glob.glob(os.path.join(folder_path, "*data*.csv"))
 
         if not label_files or not data_files:
-            raise ValueError("❌ No matching label or data files found!")
+            raise ValueError("No matching label or data files found!")
 
         # Sort by last modified time
         label_files = sorted(label_files, key=os.path.getmtime)
@@ -589,8 +572,8 @@ def runLocalExperiment():
         filepath_labels = os.path.basename(label_files[-1])
         filepath_data = os.path.basename(data_files[-1])
 
-        print(f"🔵 Found LABEL file: {filepath_labels}")
-        print(f"🔵 Found DATA file: {filepath_data}")
+        print(f"Found LABEL file: {filepath_labels}")
+        print(f"Found DATA file: {filepath_data}")
 
         return filepath_data, filepath_labels
 
@@ -600,7 +583,7 @@ def runLocalExperiment():
         feature_files = glob.glob(os.path.join(base_folder, "*features.npy"))
 
         if not label_files or not feature_files:
-            raise ValueError("❌ No matching label or feature files found!")
+            raise ValueError("No matching label or feature files found!")
 
         label_files = sorted(label_files, key=os.path.getmtime)
         feature_files = sorted(feature_files, key=os.path.getmtime)
@@ -608,8 +591,8 @@ def runLocalExperiment():
         latest_label_file = label_files[-1]
         latest_feature_file = feature_files[-1]
 
-        print(f"🔵 Loading LABEL file: {latest_label_file}")
-        print(f"🔵 Loading FEATURE file: {latest_feature_file}")
+        print(f"Lading LABEL file: {latest_label_file}")
+        print(f"Loading FEATURE file: {latest_feature_file}")
 
         labels = np.loadtxt(latest_label_file, delimiter=",", dtype=str)
         features = np.load(latest_feature_file, allow_pickle=True)
@@ -653,14 +636,14 @@ def runLocalExperiment():
             X_train = scaler.fit_transform(X_train)
             X_val = scaler.transform(X_val)
             X_test = scaler.transform(X_test)
-            print("🔵 Applied StandardScaler normalization.")
+            print("Applied StandardScaler normalization.")
 
         elif normalization_method == "minmax":
             scaler = MinMaxScaler()
             X_train = scaler.fit_transform(X_train)
             X_val = scaler.transform(X_val)
             X_test = scaler.transform(X_test)
-            print("🔵 Applied MinMaxScaler normalization.")
+            print("Applied MinMaxScaler normalization.")
 
         # Step 2b: Apply PCA if requested
         if apply_pca:
@@ -668,7 +651,7 @@ def runLocalExperiment():
             X_train = pca.fit_transform(X_train)
             X_val = pca.transform(X_val)
             X_test = pca.transform(X_test)
-            print(f"🔵 PCA applied! Reduced dimensions: {X_train.shape[1]} components.")
+            print(f"PCA applied! Reduced dimensions: {X_train.shape[1]} components.")
 
         # Step 3: Train
         model.fit(X_train, y_train)
@@ -688,22 +671,22 @@ def runLocalExperiment():
         val_acc = accuracy_score(y_val, val_preds)
         test_acc = accuracy_score(y_test, test_preds)
 
-        print(f"\n✅ Train Accuracy: {train_acc:.4f}")
-        print(f"✅ Validation Accuracy: {val_acc:.4f}")
-        print(f"✅ Test Accuracy: {test_acc:.4f}\n")
+        print(f"\nTrain Accuracy: {train_acc:.4f}")
+        print(f"Validation Accuracy: {val_acc:.4f}")
+        print(f"Test Accuracy: {test_acc:.4f}\n")
 
         # Step 7: Show Predictions
-        print("🔵 Validation Predictions vs True Labels + Probabilities:")
+        print("Validation Predictions vs True Labels + Probabilities:")
      #   for pred, true, prob in zip(val_preds, y_val, val_probs):
     #       print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
 
-        print("\n🟢 Test Predictions vs True Labels + Probabilities:")
+        print("\nTest Predictions vs True Labels + Probabilities:")
       #  for pred, true, prob in zip(test_preds, y_test, test_probs):
       #      print(f"Predicted: {pred} | Actual: {true} | Probabilities: {np.round(prob, 3)}")
 
         return train_acc, val_acc, test_acc
 
-    # 📍 Run after logicForPitt() finishes
+    # Run after logicForPitt() finishes
     # Set your folder
     timeSeriesDataPath = "/01_TimeSeriesData/"
     folderPath = os.getcwd() + timeSeriesDataPath
@@ -741,7 +724,7 @@ def runLocalExperiment():
         val_accuracies = []
         test_accuracies = []
         for run in range(n_runs):
-            print(f"🔵 Run {run + 1}/{n_runs}")
+            print(f"Run {run + 1}/{n_runs}")
         #    val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="standard", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
             train_acc, val_acc, test_acc = train_validate_test_pipeline(data, labels, model=model, normalization_method="minmax", apply_pca=apply_pca, pca_variance_threshold=pca_variance_threshold)
 
@@ -750,10 +733,10 @@ def runLocalExperiment():
             test_accuracies.append(test_acc)
 
         # Summary
-        print(f"\n✅ Final Results after {n_runs} runs:")
-        print(f"Train Accuracy: {np.mean(train_accuracies):.4f} ± {np.std(train_accuracies):.4f}")
-        print(f"Validation Accuracy: {np.mean(val_accuracies):.4f} ± {np.std(val_accuracies):.4f}")
-        print(f"Test Accuracy: {np.mean(test_accuracies):.4f} ± {np.std(test_accuracies):.4f}")
+        print(f"\nFinal Results after {n_runs} runs:")
+        print(f"Train Accuracy: {np.mean(train_accuracies):.4f} +- {np.std(train_accuracies):.4f}")
+        print(f"Validation Accuracy: {np.mean(val_accuracies):.4f} +- {np.std(val_accuracies):.4f}")
+        print(f"Test Accuracy: {np.mean(test_accuracies):.4f} +- {np.std(test_accuracies):.4f}")
 
     results_df = pd.DataFrame({
         "Split": ["Train", "Validation", "Test"],

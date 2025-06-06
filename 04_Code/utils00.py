@@ -226,8 +226,8 @@ def average_cosine_similarity_by_class(X, y):
     same_avg = np.mean(same_class)
     diff_avg = np.mean(diff_class)
 
-    print(f"🟢 Average SAME-class cosine similarity: {same_avg:.4f}")
-    print(f"🔴 Average DIFFERENT-class cosine similarity: {diff_avg:.4f}")
+    print(f"Average SAME-class cosine similarity: {same_avg:.4f}")
+    print(f"Average DIFFERENT-class cosine similarity: {diff_avg:.4f}")
 
     return same_avg, diff_avg
 
@@ -310,7 +310,7 @@ def write_output01(data, file_path_caseName, subfolderName, filenameVars, format
         np.save(filenameFull, np.array(data, dtype=object))
 
     if verbose:
-        print(f"✅ CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
+        print(f"CSV ({prefix}) written in {time.time() - start_time:.2f} seconds: {filenameFull}")
 
 def createResultsFile01(config, metadata_ALL, labels, total_timeseries_time, durationStats_Dict, samplerateStats_Dict, file_path_caseName,
                       subfolderName, filenameVars, formatted_datetime=None, prefix="result"):

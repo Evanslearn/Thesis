@@ -287,7 +287,7 @@ def check_indicesEqual(indices_step02, indices_all):
 
 
 def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
-    print(f"\n🔍 Training: {name}")
+    print(f"\nTraining: {name}")
 
     def get_predictions_and_metrics(X, Y, set_name):
         predictions = clf.predict(X)
@@ -298,7 +298,7 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
         acc = report_dict["accuracy"] if "accuracy" in report_dict else report_dict.get("weighted avg", {}).get("f1-score")
         cm = confusion_matrix(Y, predictions)
 
-        print(f"\n📊 {set_name.title()} Performance for {name}:")
+        print(f"\n{set_name.title()} Performance for {name}:")
         print(classification_report(Y, predictions))
         print(f"{set_name.title()} Accuracy: {acc:.4f}")
         print("Confusion Matrix:")
@@ -313,7 +313,7 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
     combined_df = pd.concat([train_df, val_df, test_df], axis=0)
     combined_df = combined_df[["set", "precision", "recall", "f1-score", "support"]]
 
-    print(f"\n📋 Combined classification report for {name}:")
+    print(f"\nCombined classification report for {name}:")
     print(combined_df.round(2))
 
     pd.set_option("display.max_columns", None)  # Show all columns
@@ -322,7 +322,7 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
     # Optional: Pivot for clearer side-by-side comparison
     metrics_df = combined_df.reset_index()  # bring '0', '1', etc. into a column
     pivot_df = metrics_df.pivot(index="index", columns="set", values=["precision", "recall", "f1-score", "support"])
-    # Flatten the MultiIndex column names (e.g., ('precision', 'train') → 'precision_train')
+    # Flatten the MultiIndex column names (e.g., ('precision', 'train') -> 'precision_train')
     pivot_df.columns = [f"{metric}_{split}" for metric, split in pivot_df.columns]
     # Optional: Reorder the columns
     ordered_cols = []
@@ -332,7 +332,7 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
             if col in pivot_df.columns:
                 ordered_cols.append(col)
     pivot_df = pivot_df[ordered_cols]  # safely reorder
-    print("\n📊 Pivoted view for side-by-side comparison:")
+    print("\nPivoted view for side-by-side comparison:")
     print(pivot_df.round(2))
     pd.reset_option("display.max_columns")
     pd.reset_option("display.width")
@@ -350,13 +350,13 @@ def evaluate_model(name, clf, X_train, Y_train, X_val, Y_val, X_test, Y_test):
 
     print(f"VAL SET")
     y_proba_val = get_class_probabilities(clf, X_val)
-    print(f"🧪 Probabilities for {name}:")
+    print(f"Probabilities for {name}:")
     print(f"Shape: {y_proba_val.shape}")
     print(f"Values: {y_proba_val}")
 
     print(f"TEST SET")
     y_proba_test = get_class_probabilities(clf, X_test)
-    print(f"🧪 Probabilities for {name}:")
+    print(f"Probabilities for {name}:")
     print(f"Shape: {y_proba_test.shape}")
     print(f"Values: {y_proba_test}")
 
@@ -449,7 +449,7 @@ def train_and_evaluate_classifiers(X_train, Y_train, X_val, Y_val, X_test, Y_tes
                 f.write(output_str)
                 f.write("\n" + "=" * 100 + "\n")
             json.dump(all_outputs, f, indent=4, default=str)
-        print(f"\n📁 Saved classification results to: {output_txt}")
+        print(f"\nSaved classification results to: {output_txt}")
 
 def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     # Extract hyperparameters
@@ -583,7 +583,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
         ]
         for method, label in zip(methods, labels):
             for X_data, suffix in datasets:
-                print(f"\n🖼️ Plotting {label} {suffix}")
+                print(f"\nPlotting {label} {suffix}")
          #       plot_tsnePCAUMAP(method, X_data, Y_train, 10, f"{label} {suffix}", random_state=random_state, remove_outliers=False)
 
     if SIMPLE_layers + GRU_layers + LSTM_layers > 0:
@@ -598,7 +598,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     model = tf.keras.Sequential(name='My-NN')
     # Choose model type based on config
     if SIMPLE_layers + GRU_layers + LSTM_layers == 0:
-        # 🧠 MLP-only path
+        # MLP-only path
         model.add(tf.keras.layers.Input(shape=X_train_normalized.shape[1:], name='input_layer'))
         for i in range(config["layers"]["Dense"]):
             model.add(tf.keras.layers.Dense(dense_neurons[i], activation=activation_dense, kernel_regularizer=kernel_regularizer_dense))
@@ -707,7 +707,7 @@ def model03_VangRNN(data, labels, needSplitting, config, is_first_run=True):
     val_metrics = formatted_val_metrics
     val_metrics['loss'] = f"{val_loss_evaluate[0]:.{decimalPoints}f}"
     formatted_val_string = ', '.join([f"'{metric}' = {val_metrics[metric]}" for metric in val_metrics])
-    print(f"\nValidation Evaluation → {formatted_val_loss}, {formatted_val_string}")
+    print(f"\nValidation Evaluation -> {formatted_val_loss}, {formatted_val_string}")
 
   #  print_classification_report(Y_train, train_preds_binary, "Train Set")
   #  print_classification_report(Y_val, val_preds_binary, "Validation Set")

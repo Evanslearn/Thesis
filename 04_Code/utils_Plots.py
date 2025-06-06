@@ -94,16 +94,6 @@ def plot_token_distribution_Histogram(data, name="Token", bins=30, title=None, s
 # ----- 01 -----
 def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "C", "D"),
                                title="Distribution by Label", bins=50):
-    """
-    Plots histograms of a given column, grouped by label, with auto-detected units.
-
-    Parameters:
-    - df_metadata: DataFrame with at least [colName, "label"] columns
-    - labels: Tuple or list of labels to plot (default: ["ALL", "C", "D"])
-    - title: Plot title
-    - bins: Number of histogram bins
-    """
-
     # Auto unit detection based on column name
     unit = "s" if "duration" in colName.lower() else "Hz" if any(k in colName.lower() for k in ["freq", "rate"]) else ""
 
@@ -147,7 +137,7 @@ def plot_colName_distributions(df_metadata, colName="duration", labels=("ALL", "
             )
 
     percentile_99 = np.percentile(df_metadata[colName], 99)  # Calculate the percentile
-    common_xlim = (0, df_metadata[colName].max())  # Normalize X-axis across plots
+    common_xlim = (0, df_metadata[colName].max())
     for ax in axs:
     #    ax.set_xlim([0, percentile_99]) # Set x-axis limit to 99th percentile
         ax.set_xlim(common_xlim)
@@ -226,13 +216,13 @@ def compare_token_assignments(name, segments, kmeans_model, knn_model, plot=True
     tokens_knn = knn_model.predict(segments)
 
     agreement = np.mean(tokens_kmeans == tokens_knn)
-    print(f"🔍 Agreement ({name}): {agreement:.2%} ({np.sum(tokens_kmeans == tokens_knn)} / {len(tokens_kmeans)})")
+    print(f"Agreement ({name}): {agreement:.2%} ({np.sum(tokens_kmeans == tokens_knn)} / {len(tokens_kmeans)})")
 
     if plot:
         fig = plt.figure(figsize=(12, 4))
         plt.plot(tokens_kmeans, label="KMeans Tokens", alpha=0.7)
         plt.plot(tokens_knn, label="KNN Tokens", alpha=0.7)
-        plt.title(f"{name} — Token Assignment (KMeans vs KNN)")
+        plt.title(f"{name} - Token Assignment (KMeans vs KNN)")
         plt.legend()
         plt.xlabel("Window Index")
         plt.ylabel("Token ID")
@@ -283,7 +273,7 @@ def plot_token_spectrograms(windows, labels, token_id, sample_rate=11025, n_samp
 
 # ----- 02 -----
 def plot_tsne_of_segments(segments, labels, perplexity=30, random_state=42):
-    print("🌀 Running t-SNE for 2D projection...")
+    print("Running t-SNE for 2D projection...")
     tsne = TSNE(n_components=2, perplexity=perplexity, random_state=random_state)
     reduced = tsne.fit_transform(segments)
 
@@ -422,7 +412,7 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
 
         ax.set_ylabel("Cumulative Explained Variance")
         ax.grid(True)
-        print(f"📊 {set_name} - % Variance in first {top_k} PCA components: {top10_var:.4f}")
+        print(f"{set_name} - % Variance in first {top_k} PCA components: {top10_var:.4f}")
 
         threshold = 0.90
         dim_90 = np.where(explained_var >= threshold)[0][0] + 1  # +1 for 1-based index
@@ -465,9 +455,9 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
             if cbar and hasattr(cbar, 'ax'):
                 cbar.ax.tick_params(labelsize=12)
         except Exception as e:
-            print(f"⚠️ Skipping colorbar font update: {e}")
+            print(f"Skipping colorbar font update: {e}")
     else:
-        print("⚠️ No colorbar to update")
+        print("No colorbar to update")
 
     fig.suptitle("Cosine Similarity Heatmaps Across Sets", fontsize=14)
     fig.tight_layout(rect=[0, 0, 0.9, 0.95])
@@ -487,7 +477,7 @@ def analyze_all_embedding_plots(train_embeddings, val_embeddings, test_embedding
         ax.legend()
         ax.set_ylabel("Frequency")
         ax.grid(True)
-        print(f"📏 {set_name} - Mean cosine distance: {mean_d:.4f}, Std: {std_d:.4f}")
+        print(f"{set_name} - Mean cosine distance: {mean_d:.4f}, Std: {std_d:.4f}")
 
     axes[-1].set_xlabel("Cosine Distance")
     fig.suptitle("Cosine Distance Histograms Across Sets", fontsize=14)

@@ -74,14 +74,14 @@ def find_optimal_clusters(data, n_param_list, clusteringAlgorithm="KMEANS", eps_
             cluster_labels = model.fit_predict(data)
             n_clusters_found = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
             if n_clusters_found < 2:
-                print(f"⚠️ Skipping {param} — only {n_clusters_found} cluster(s)")
+                print(f"Skipping {param} - only {n_clusters_found} cluster(s)")
                 continue
 
             sil = silhouette_score(data, cluster_labels)
             ch = calinski_harabasz_score(data, cluster_labels)
             db = davies_bouldin_score(data, cluster_labels)
         except Exception as e:
-            print(f"❌ Error for param={param}: {e}")
+            print(f"Error for param={param}: {e}")
             traceback.print_exc()
             sil, ch, db = -9999, -9999, 9999
             model = None
@@ -157,9 +157,9 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
     all_pairs = []
     all_labels = []
 
-    print(f"🧠 Training skip-gram across {len(corpus)} sequences")
+    print(f"Training skip-gram across {len(corpus)} sequences")
 
-    #  ✅ Respect conversation boundaries
+    #  Respect conversation boundaries
     for idx, sequence in enumerate(corpus):
         if len(sequence) < 2:
             continue  # skip very short sequences
@@ -170,7 +170,7 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
         all_labels.extend(labels)
 
         if idx < 3:  # Print a few examples
-            print(f"\nSequence {idx} → {sequence[:10]}")
+            print(f"\nSequence {idx} -> {sequence[:10]}")
             print(f"Sample pairs: {pairs[:5]}")
             print(f"Sample labels: {labels[:5]}")
 
@@ -182,8 +182,8 @@ def train_skipgram_withinSameConversations(corpus, vocab_size, embedding_dim=50,
     pairs_context, pairs_target = all_pairs[:, 0], all_pairs[:, 1]
 
     print(f"\nTotal skip-gram pairs: {len(pairs_context)}")
-    print(f"📏 Context shape: {pairs_context.shape}")
-    print(f"🎯 Target shape: {pairs_target.shape}")
+    print(f"Context shape: {pairs_context.shape}")
+    print(f"Target shape: {pairs_target.shape}")
 
     # Build and train the model
     model = build_skipgram_model(vocab_size, embedding_dim, loss)
@@ -253,10 +253,10 @@ class SkipGramNCE(Model):
 def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6, epochs=10, num_negative_samples=5, batch_size=128):
     if vocab_size <= num_negative_samples:
         num_negative_samples = vocab_size - 1
-        print(f"⚠️ Reducing num_negative_samples to {num_negative_samples} due to small vocab_size = {vocab_size}")
+        print(f"Reducing num_negative_samples to {num_negative_samples} due to small vocab_size = {vocab_size}")
 
     all_pairs = []
-    # ✅ Respect conversation boundaries
+    # Respect conversation boundaries
     for sequence in corpus:
         if len(sequence) < 2:
             continue
@@ -325,14 +325,14 @@ def train_skipgram_with_nce(corpus, vocab_size, embedding_dim=300, window_size=6
                 epochs_without_improvement += 1
 
             if epochs_without_improvement >= patience:
-                print(f"✅ Early stopping triggered at epoch {epoch + 1}.")
+                print(f"Early stopping triggered at epoch {epoch + 1}.")
                 epochEarlyStopped = epoch + 1
                 break
 
     # after all epochs
     if early_stopping and epochs_without_improvement >= patience and best_weights is not None:
         model.set_weights(best_weights)
-        print(f"📦 Best model weights restored after early stopping. Patience = {patience}, and epochEarlyStopped = {epochEarlyStopped}")
+        print(f"Best model weights restored after early stopping. Patience = {patience}, and epochEarlyStopped = {epochEarlyStopped}")
 
     return model, history, epochEarlyStopped
 
@@ -368,7 +368,7 @@ def scale_split_data(scaler_class, data, indices, enable_scaling=False, fit=Fals
                 dropped_cols.append("index")
                 row = row.drop("index")
        #     if dropped_cols:
-       #         print(f"⚠️ Dropping columns from row {row.name}: {dropped_cols}")
+       #         print(f"Dropping columns from row {row.name}: {dropped_cols}")
 
             values = row.dropna().values.astype(float).reshape(-1, 1)
             scaled = scaler_class().fit_transform(values).flatten()
@@ -409,7 +409,7 @@ def slice_timeseries_rowwise(data, lengths, window_length, stride, pad_short=Tru
                 segments.append(padded)
                 origins.append(idx)
             else:
-                print(f"⚠️ Skipping sample {idx} — too short (length={len(row_values)}, needed={window_length})")
+                print(f"Skipping sample {idx} - too short (length={len(row_values)}, needed={window_length})")
             continue
 
         for i in range(0, len(row_values) - window_length + 1, stride):
@@ -417,7 +417,7 @@ def slice_timeseries_rowwise(data, lengths, window_length, stride, pad_short=Tru
             segments.append(segment)
             origins.append(idx)
 
-    print(f"\n✅ Finished slicing: {len(segments)} segments from {len(set(origins))} samples (skipped {len(data) - len(set(origins))})")
+    print(f"\nFinished slicing: {len(segments)} segments from {len(set(origins))} samples (skipped {len(data) - len(set(origins))})")
 
     return np.array(segments), np.array(origins)
 
@@ -483,7 +483,7 @@ def mainLogic():
         segments_train, n_clusters_list, knn_neighbors=config["knn_neighbors"], clusteringAlgorithm=config['clusteringAlgorithm'], eps_list = config['dbscan_eps_list'])
     best_silhouette = np.round(best_silhouette, 4)
 
-    # Token assignment step — we train a classifier (k-NN) on the clustered segments
+    # Token assignment step: we train a classifier (k-NN) on the clustered segments
     # as suggested in Signal2Vec: token extraction (KMeans), token assignment (classifier)
     tokens_train = tokens_from_kmeans
   #  tokens_train = knn_model.predict(segments_train)  # Optional: use classifier output
@@ -527,7 +527,7 @@ def mainLogic():
  #   for token_id in top_tokens:
  #       print("waveforms for most common tokens")
 #        plot_token_waveforms(segments_train, tokens_train, token_id, sample_rate=11025, n_samples=5)
-    #    print("\n🎨 Spectrograms for most common tokens:")
+    #    print("\nSpectrograms for most common tokens:")
    #     plot_token_spectrograms(segments_train, tokens_train, token_id, sample_rate=11025, n_samples=5)
 
   #  print('\n TSNE for most common tokens')

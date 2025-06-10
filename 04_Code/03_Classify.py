@@ -87,7 +87,7 @@ def f1_score_keras(y_true, y_pred):
 
 ### Global Configuration Dictionary ###
 CONFIG = {
-    "split_options": ["YES"], # "YES", "NO"
+    "split_options": ["NO"], # "YES", "NO"
     "random_state": 42,
     "batch_size": 128,
     "epochs": 50,
@@ -103,13 +103,13 @@ CONFIG = {
         "LSTM": [32, 32, 32],  # 32
     },
     "neurons": {
-        "Dense": [64, 32, 64], # 64
+        "Dense": [64, 32, 64, 32 , 32], # 64
     },
     "layers": {
         "SimpleRNN": 0, # 2
         "GRU": 0, # 0
         "LSTM": 0, # 1
-        "Dense": 1, # 1ty
+        "Dense": 5, # 1ty
         "Dropout": 1,
         "BatchNorm": 1
     },

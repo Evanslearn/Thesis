@@ -191,7 +191,7 @@ common_part = "scalerMinMax_sil0.5267_nCl48_nN10_wSize6_str3_wSizeSG20_SGLossNCE
 common_part = "scalerMinMax_sil0.3373_nCl2_nN30_wSize64_str32_wSizeSG40_SGLossNCE_nEmbd50_2025-06-05_22-26-13"
 common_part = "scalerMinMax_sil0.361_nCl2_nN30_wSize256_str128_wSizeSG40_SGLossNCE_nEmbd50_2025-06-06_01-10-39"
 common_part = "scalerMinMax_sil0.5167_nCl4_nN3_wSize512_str256_wSizeSG40_SGLossNCE_nEmbd3_2025-06-06_18-57-08"
-common_part = "scalerMinMax_sil0.2729_nCl4_nN3_wSize512_str256_wSizeSG40_SGLossNCE_nEmbd3_2025-06-06_21-15-49"
+#common_part = "scalerMinMax_sil0.2729_nCl4_nN3_wSize512_str256_wSizeSG40_SGLossNCE_nEmbd3_2025-06-06_21-15-49"
 
 
 search_dir = os.getcwd() + "/02_Embeddings"
